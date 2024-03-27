@@ -1,0 +1,10 @@
+<RCC>
+    <qresource prefix="/new/prefix1/images">
+        <file>images/bitbug_favicon.ico</file>
+        <file>images/chat.ico</file>
+        <file>images/friends.ico</file>
+        <file>images/userInfo.ico</file>
+        <file>images/file.ico</file>
+        <file>images/add.ico</file>
+    </qresource>
+</RCC>
