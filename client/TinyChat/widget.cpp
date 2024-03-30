@@ -34,12 +34,14 @@ void Widget::initUI()
     labelFont->setPointSize(10);
     ui->status_label->setFont(*labelFont);
 
+    initGroupChat();
+
     connect(this, SIGNAL(friendList_finish()), this, SLOT(init_privateChat()));
 }
 
 void Widget::init_privateChat()
 {
-    QWidget* privateButtonWidget = new QWidget;
+    privateButtonWidget = new QWidget;
     ui->stackedWidget_button->addWidget(privateButtonWidget);
     QVBoxLayout* privateButtonWidgetLayout = new QVBoxLayout;
     privateButtonWidgetLayout->setAlignment(Qt::AlignTop);
@@ -78,6 +80,7 @@ void Widget::init_privateChat()
         privateChatLayoutList[i]->setStretch(1, 1);
 
         connect(friendButtonList[i], &QPushButton::clicked, [this, i](){
+            chat_type = 0;      //设置要发送的信息是私聊
             friendAccount_to_chat = friendButtonList[i]->getFriendAccount();
             LOGINFO() << "当前要发送数据的好友账号是: " << friendAccount_to_chat;
             ui->stackedWidget_chat->setCurrentWidget(privateChatPageList[i]);
@@ -95,6 +98,67 @@ void Widget::init_privateChat()
         });
     }
     LOGINFO() << "私聊界面初始化完成";
+}
+
+void Widget::initGroupChat()
+{
+    LOGINFO() << "初始化群聊界面" ;
+    groupButtonWidget = new QWidget;
+    ui->stackedWidget_button->addWidget(groupButtonWidget);
+    groupButtonWidgetLayout = new QVBoxLayout;
+    groupButtonWidgetLayout->setAlignment(Qt::AlignTop);
+    groupButtonWidget->setLayout(groupButtonWidgetLayout);
+
+    connect(this, SIGNAL(groupList_finish()), this, SLOT(insert_groupPage()));
+    connect(this, SIGNAL(groupInsert_finish()), this, SLOT(connnect_groupEvent()));
+}
+
+void Widget::insert_groupPage()
+{
+    LOGINFO() << "开始插入群聊信息，account: " << groupAccount_to_insert;
+    groupInfoMap::iterator ite_groupInfoMap = m_groupInfoMap.find(groupAccount_to_insert);
+
+    //创建按钮
+    groupChatButton* newGroupButton = new groupChatButton(ite_groupInfoMap->second);
+    newGroupButton->setText(ite_groupInfoMap->second->name);
+    groupButtonList.push_back(newGroupButton);
+    groupButtonWidgetLayout->addWidget(newGroupButton);
+
+    //创建每个群聊对应的对话框
+    groupChatPage* newGroupPage = new groupChatPage;
+    groupChatPageList.push_back(newGroupPage);
+    ui->stackedWidget_chat->addWidget(newGroupPage);
+    QVBoxLayout* newLayout = new QVBoxLayout;
+    newLayout->setAlignment(Qt::AlignTop);
+    newGroupPage->setLayout(newLayout);
+    groupChatLayoutList.push_back(newLayout);
+
+    //加入textEdit和textBrowser组件
+    chatTextBrowser* groupTextBrowser = new chatTextBrowser(ite_groupInfoMap->second);
+    newLayout->addWidget(groupTextBrowser);
+    groupChatTextBrowserList.push_back(groupTextBrowser);
+    chatTextEdit* groupTextEdit = new chatTextEdit(ite_groupInfoMap->second);
+    newLayout->addWidget(groupTextEdit);
+    groupChatTextEditList.push_back(groupTextEdit);
+    newLayout->setStretch(0, 3);
+    newLayout->setStretch(1, 1);
+
+    emit groupInsert_finish();
+}
+
+void Widget::connnect_groupEvent()
+{
+    int i = groupButtonList.size() - 1;
+    connect(groupButtonList[i], &QPushButton::clicked, [this, i](){
+        chat_type = 1;      //设置要发生的信息是群聊
+        groupAccount_to_chat = groupButtonList[i]->getGroupAccount();
+        LOGINFO() << "当前要发送的群聊账号是: " << groupAccount_to_chat;
+        ui->stackedWidget_chat->setCurrentWidget(groupChatPageList[i]);
+        LOGINFO() << "设置聊天框标签为: " << groupButtonList[i]->getGroupName();
+        ui->chatNameLabel->setText(groupButtonList[i]->getGroupName());
+        ui->status_label->setText("");
+        edit_to_chat = groupChatTextEditList[i];
+    });
 }
 
 void Widget::init()
@@ -159,6 +223,10 @@ void Widget::init()
     connect(m_socket, SIGNAL(readyRead()), this, SLOT(readyReadSlot()));
 
     getFriendList();
+    getGroupList();
+
+    connect(this, SIGNAL(emit_friendAccount(int)), this, SLOT(searchPrivateBrowser(int)));
+    connect(this, SIGNAL(emit_groupAccount(int)), this, SLOT(searchGroupBrowser(int)));
 }
 
 void Widget::readyReadSlot()
@@ -230,6 +298,21 @@ int Widget::getFriendList()
     return true;
 }
 
+int Widget::getGroupList()
+{
+    //发送获得群聊好友表请求
+    getGroupListReq* groupReq = (getGroupListReq*)malloc(sizeof(getGroupListReq));
+    groupReq->m_account = m_uInfo.m_account;
+    sendMsg((char*)groupReq, sizeof(getGroupListReq), command_groupList);
+    if(groupReq != NULL)
+    {
+        free(groupReq);
+        groupReq = NULL;
+    }
+
+    return true;
+}
+
 void Widget::login()
 {
     //发送登陆请求
@@ -260,7 +343,17 @@ void Widget::login()
         is_login = true;
         LOGINFO() << "登陆成功，用户名为：" << m_uInfo.m_userName;
     }
-    free(pBody);
+
+    if(pBody != NULL)
+    {
+        free(pBody);
+        pBody = NULL;
+    }
+    if(loginReply != NULL)
+    {
+        free(loginReply);
+        loginReply = NULL;
+    }
 }
 
 void Widget::sendMsg(void* buf, int bufLen, int command, int error, int type)
@@ -325,8 +418,14 @@ int Widget::signals_handle(messagePacket* msgPacket)
     case command_friendList:
         friendListHandle(msgPacket->body + sizeof(messageBody));
         break;
+    case command_groupList:
+        groupListHandle(msgPacket->body + sizeof(messageBody));
+        break;
     case command_privateChat:
         privateChatHandle(msgPacket->body + sizeof(messageBody));
+        break;
+    case command_groupChat:
+        groupChatHandle(msgPacket->body + sizeof(messageBody));
         break;
     case command_refreshFriendStatus:
         refreshFriendStatusHandle(msgPacket->body + sizeof(messageBody));
@@ -374,6 +473,34 @@ int Widget::friendListHandle(void* message)
     return true;
 }
 
+int Widget::groupListHandle(void* message)
+{
+    getGroupListReply* groupReply = (getGroupListReply*)message;
+    LOGINFO() << "groupListReply from server";
+    LOGINFO() << "groupAccount: " << groupReply->group_account << " groupName: " << groupReply->group_name << " groupSize: " << groupReply->size;
+    groupInfo* gInfo = new groupInfo;
+    gInfo->account = groupReply->group_account;
+    memmove(gInfo->name, groupReply->group_name, sizeof(groupReply->group_name));
+    gInfo->size = groupReply->size;
+    m_groupInfoMap.insert(std::pair(groupReply->group_account, gInfo));
+
+    for(int i = 0; i < groupReply->size; i++)
+    {
+        LOGINFO() << "收到第" << i + 1 << "个群聊用户信息";
+        groupMemInfo* groupMem = (groupMemInfo*)((char*)message + sizeof(getGroupListReply) + sizeof(groupMemInfo) * i);
+        groupMemInfo* newGroupMem = new groupMemInfo;
+        memmove(newGroupMem, groupMem, sizeof(groupMemInfo));
+        gInfo->groupMemInfoList.push_back(groupMem);
+        LOGINFO() << "用户信息： 账号: " << newGroupMem->account << " 用户名: " << newGroupMem->name << " 权限: " << newGroupMem->right;
+    }
+
+    //由于不是一次全部接收所有群聊信息，所有将初始化群聊界面和插入群聊信息放在一个slot函数中
+    groupAccount_to_insert = groupReply->group_account;
+    emit groupList_finish();
+
+    return true;
+}
+
 int Widget::privateChatHandle(void* message)
 {
     LOGINFO() << "收到聊天消息";
@@ -382,7 +509,7 @@ int Widget::privateChatHandle(void* message)
     if(priChatReq->m_friendAccount == m_uInfo.m_account)
     {
         int sendAccount = priChatReq->m_userAccount;    //发送者账号即为发送请求中的用户账户
-        chatTextBrowser* browser = searchTextBrowser(sendAccount);
+        emit emit_friendAccount(sendAccount);
         char* buf = (char*)malloc(priChatReq->m_msgLen + 1);
         memset(buf, 0, priChatReq->m_msgLen + 1);
         memmove(buf, (char*)message + sizeof(privateChatReq), priChatReq->m_msgLen);
@@ -391,7 +518,7 @@ int Widget::privateChatHandle(void* message)
         //TODO 将聊天信息存储在本地或数据库
 
         //将发送的消息显示在对应的聊天框内
-        displayMessage(browser, &displayMsg, friInfo);
+        displayMessage(browser_to_send, &displayMsg, friInfo);
         LOGINFO() << "[" << friInfo->name << "]" << buf;
         if(buf != NULL)
         {
@@ -399,6 +526,36 @@ int Widget::privateChatHandle(void* message)
             buf = NULL;
         }
     }
+    return true;
+}
+
+int Widget::groupChatHandle(void* message)
+{
+    LOGINFO() << "收到群聊消息";
+    groupChatReq* gChatReq = (groupChatReq*)message;
+    //如果发送的群聊请求中的群聊账号在群聊信息表中
+    groupInfoMap::iterator ite_gMap = m_groupInfoMap.find(gChatReq->m_groupAccount);
+    if(ite_gMap != m_groupInfoMap.end())
+    {
+        emit emit_groupAccount(gChatReq->m_groupAccount);
+        char* buf = (char*)malloc(gChatReq->m_msgLen + 1);
+        memset(buf, 0, gChatReq->m_msgLen + 1);
+        memmove(buf, (char*)message + sizeof(groupChatReq), gChatReq->m_msgLen);
+        QString dispalyMsg = QString(buf);
+        groupInfo* gInfo = searchGroupInfo(gChatReq->m_groupAccount);
+        //TODO 将聊天信息存储在本地或数据库
+
+        //将发送的消息显示在对应的聊天框内
+        groupMemInfo* gmInfo = searchGroupMemInfo(gChatReq->m_userAccount, gChatReq->m_groupAccount);
+        displayGroupMessage(browser_to_send, &dispalyMsg, gInfo, gmInfo);
+        LOGINFO() << "[" << ite_gMap->second->name <<"]" << "[" << gmInfo->name << "]: " << buf;
+        if(buf != NULL)
+        {
+            free(buf);
+            buf = NULL;
+        }
+    }
+
     return true;
 }
 
@@ -435,17 +592,37 @@ void Widget::displayMessage(chatTextBrowser* browser, QString* message, friendIn
     browser->append(*message);
 }
 
-chatTextBrowser* Widget::searchTextBrowser(int account)
+void Widget::displayGroupMessage(chatTextBrowser* browser, QString* message, groupInfo* gInfo, groupMemInfo* gmInfo)
+{
+    QDateTime dateTime = QDateTime::currentDateTime();
+    QString timeStr = dateTime.toString("yyyy-MM-dd hh:mm:ss");
+    QString gmAccount = QString::number(gmInfo->account);
+    QString gmName = QString(QLatin1String(gmInfo->name));
+    QString info = gmName + "(" + gmAccount + ") " + timeStr;
+    browser->append(info);
+    browser->append(*message);
+}
+
+void Widget::searchPrivateBrowser(int account)
 {
     for(int i = 0; i < m_friendInfoMap.size(); i++)
     {
         if(privateChatTextBrowserList[i]->getAccount() == account)
         {
-            return privateChatTextBrowserList[i];
+            browser_to_send =  privateChatTextBrowserList[i];
         }
     }
+}
 
-    return NULL;
+void Widget::searchGroupBrowser(int account)
+{
+    for(int i = 0; i < m_groupInfoMap.size(); i++)
+    {
+        if(groupChatTextBrowserList[i]->getGroupAccount() == account)
+        {
+            browser_to_send =  groupChatTextBrowserList[i];
+        }
+    }
 }
 
 friendInfo* Widget::searchFriendInfo(int account)
@@ -458,15 +635,41 @@ friendInfo* Widget::searchFriendInfo(int account)
     return NULL;
 }
 
+groupInfo* Widget::searchGroupInfo(int account)
+{
+    groupInfoMap::iterator ite = m_groupInfoMap.find(account);
+    if(ite != m_groupInfoMap.end())
+    {
+        return ite->second;
+    }
+
+    return NULL;
+}
+
+groupMemInfo* Widget::searchGroupMemInfo(int account, int groupAccount)
+{
+    groupInfo* gInfo = searchGroupInfo(groupAccount);
+    int num = gInfo->groupMemInfoList.size();
+    for(int i = 0; i < num; i++)
+    {
+        if(gInfo->groupMemInfoList[i]->account == account)
+        {
+            return gInfo->groupMemInfoList[i];
+        }
+    }
+
+    return NULL;
+}
+
 void Widget::on_privateChat_clicked()
 {
-    ui->stackedWidget_button->setCurrentIndex(2);
+    ui->stackedWidget_button->setCurrentWidget(privateButtonWidget);
 }
 
 
 void Widget::on_groupChat_clicked()
 {
-    ui->stackedWidget_button->setCurrentIndex(1);
+    ui->stackedWidget_button->setCurrentWidget(groupButtonWidget);
 }
 
 void Widget::on_sendData_clicked()
@@ -483,29 +686,59 @@ void Widget::on_sendData_clicked()
         return;
     }
     QString str = edit_to_chat->toPlainText();
-    privateChatReq* priChatReq;
-    char* p = (char*)malloc(sizeof(privateChatReq) + str.toStdString().size());
-    priChatReq = (privateChatReq*)p;
 
-    priChatReq->m_userAccount = m_uInfo.m_account;
-    priChatReq->m_msgLen = str.toStdString().size();
-    priChatReq->type = 0;   //发送文本信息
-    priChatReq->m_friendAccount = friendAccount_to_chat;
-    memmove(p + sizeof(privateChatReq), str.toStdString().c_str(), str.toStdString().size());
-    sendMsg(p, sizeof(privateChatReq) + str.toStdString().size(), command_privateChat);
-
-    //将用户的聊天信息显示在textbrowser内
-    chatTextBrowser* sendBrowser = searchTextBrowser(edit_to_chat->getAccount());
-    if(sendBrowser != NULL)
+    if(chat_type == 0)  //私聊
     {
-        displayUserMessage(sendBrowser, &str);
-        edit_to_chat->clear();
+        privateChatReq* priChatReq;
+        char* p = (char*)malloc(sizeof(privateChatReq) + str.toStdString().size());
+        priChatReq = (privateChatReq*)p;
+
+        priChatReq->m_userAccount = m_uInfo.m_account;
+        priChatReq->m_msgLen = str.toStdString().size();
+        priChatReq->type = 0;   //发送文本信息
+        priChatReq->m_friendAccount = friendAccount_to_chat;
+        memmove(p + sizeof(privateChatReq), str.toStdString().c_str(), str.toStdString().size());
+        sendMsg(p, sizeof(privateChatReq) + str.toStdString().size(), command_privateChat);
+
+        //将用户的聊天信息显示在textbrowser内
+        emit emit_friendAccount(edit_to_chat->getAccount());
+        if(browser_to_send != NULL)
+        {
+            displayUserMessage(browser_to_send, &str);
+            edit_to_chat->clear();
+        }
+
+        if(p != NULL)
+        {
+            free(p);
+            p = NULL;
+        }
     }
-
-    if(p != NULL)
+    else if(chat_type == 1) //群聊
     {
-        free(p);
-        p = NULL;
+        groupChatReq* gChatReq;
+        char* p = (char*)malloc(sizeof(groupChatReq) + str.toStdString().size());
+        gChatReq = (groupChatReq*)p;
+
+        gChatReq->m_userAccount = m_uInfo.m_account;
+        gChatReq->m_msgLen = str.toStdString().size();
+        gChatReq->type = 0;
+        gChatReq->m_groupAccount = groupAccount_to_chat;
+        memmove(p + sizeof(groupChatReq), str.toStdString().c_str(), str.toStdString().size());
+        sendMsg(p, sizeof(groupChatReq) + str.toStdString().size(), command_groupChat);
+
+        emit emit_groupAccount(edit_to_chat->getGroupAccount());
+        if(browser_to_send != NULL)
+        {
+            displayUserMessage(browser_to_send, &str);
+            edit_to_chat->clear();
+        }
+
+        if(p != NULL)
+        {
+            free(p);
+            p = NULL;
+        }
     }
 }
 

@@ -16,6 +16,8 @@ SOURCES += \
     basic.cpp \
     chattextbrowser.cpp \
     chattextedit.cpp \
+    groupchatbutton.cpp \
+    groupchatpage.cpp \
     logindlg.cpp \
     main.cpp \
     privatechatbutton.cpp \
@@ -29,6 +31,8 @@ HEADERS += \
     basic.h \
     chattextbrowser.h \
     chattextedit.h \
+    groupchatbutton.h \
+    groupchatpage.h \
     logindlg.h \
     msgDef.h \
     privatechatbutton.h \

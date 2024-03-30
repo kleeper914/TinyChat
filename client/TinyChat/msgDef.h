@@ -65,7 +65,9 @@ enum
     command_logout,
     command_register,
     command_friendList,
+    command_groupList,
     command_privateChat,
+    command_groupChat,
     command_refreshFriendStatus
 };
 
@@ -143,6 +145,38 @@ struct friendListReply
     int length;
 };
 
+//获得群聊信息请求
+struct getGroupListReq
+{
+    int m_account;
+};
+
+//获得群聊信息回复
+struct getGroupListReply
+{
+    int group_account;
+    char group_name[30];
+    //char master_name[30];     //群主名
+    int size;
+};
+
+//群聊成员信息
+struct groupMemInfo
+{
+    int account;
+    char name[30];
+    int right;      //权限
+};
+
+//群聊信息
+struct groupInfo
+{
+    int account;
+    char name[30];
+    int size;
+    vector<groupMemInfo*>   groupMemInfoList;   //存放所有群聊用户信息
+};
+
 //私聊请求
 struct privateChatReq
 {
@@ -152,7 +186,18 @@ struct privateChatReq
     int m_friendAccount;    //好友账号
 };
 
+//群聊请求
+struct groupChatReq
+{
+    int m_userAccount;  //发生者账号
+    int m_msgLen;       //消息长度
+    int type;
+    int m_groupAccount; //发送的群聊账号
+};
+
 //定义用户好友表
 typedef std::map<int, friendInfo*> friendInfoMap;
+//定义群聊信息表
+typedef std::map<int, groupInfo*> groupInfoMap;
 
 #endif // MSGDEF_H

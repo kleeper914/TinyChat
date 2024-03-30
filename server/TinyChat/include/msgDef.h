@@ -154,12 +154,55 @@ struct privateChatReq
     int m_friendAccount;
 };
 
-//group chat information
-struct groupChatInfo
+//group chat request
+struct groupChatReq
 {
-    char m_groupName[30];   //name of the group
-    int m_groupAccount;     //account of the group, random between [10000, 20000]
-    int m_size;             //how many people in the group
+    int m_userAccount;  //account of sender
+    int m_msgLen;       //the length of message
+    int type;
+    int m_groupAccount; //group account to be sent
+};
+
+//get group List request
+struct getGroupListReq
+{
+    int m_account;
+};
+
+//get group list reply
+struct getGroupListReply
+{
+    int group_account;
+    char group_name[30];
+    //char master_name[30];
+    int size;
+};
+
+//group information send to client
+struct groupInfo
+{
+    int account;
+    char name[30];
+    int size;
+};
+
+//info of group member
+struct groupMemInfo
+{
+    int account;
+    char name[30];
+    int right;      //authority
+};
+
+typedef std::map<int, groupMemInfo*>groupMemInfoMap;
+
+//store the detailed group Infomation in the server
+struct groupStoreInfo
+{
+    int account;
+    char name[30];
+    int size;
+    groupMemInfoMap m_groupMemInfoMap;
 };
 
 //add friend request
@@ -194,7 +237,9 @@ enum
     command_logout,
     command_register,
     command_friendList,
+    command_groupList,
     command_privateChat,
+    command_groupChat,
     command_refreshFriendStatus
 };
 
@@ -203,6 +248,7 @@ enum
 */
 typedef std::map<int, userInfo*> userInfoMap;
 typedef std::map<int, friendInfo>friendInfoMap;
+typedef std::map<int, groupStoreInfo*>groupInfoMap;
 
 static userInfoMap m_userInfoMap;
 
@@ -224,7 +270,9 @@ public:
     int logoutHandle(void* arg, void* message);
     int registerHandle(void* arg, void* message);
     int friendListHandle(void* arg, void* message);
+    int groupListHandle(void* arg, void* message);
     int privateChatHandle(void* message);
+    int groupChatHandle(void* message);
     int refreshFriendStatusHandle(void* arg, void* message);
 public:
     static void sendMsg(int socket, void* buf, int bufLen, int command, int error = 0, int type = 2);
@@ -242,6 +290,7 @@ private:
     bool is_finish;     //task comletion identifier
     bool is_login;
     friendInfoMap m_friendInfoMap;
+    groupInfoMap m_groupInfoMap;
 };
 
 #endif

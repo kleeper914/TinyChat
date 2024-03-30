@@ -82,5 +82,7 @@ int getSequence();
 //TODO account create function
 int getAccount();
 
+//TODO group account create function
+int getGroupAccount();
 
 #endif

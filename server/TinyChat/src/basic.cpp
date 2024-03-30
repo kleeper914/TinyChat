@@ -26,3 +26,13 @@ int getAccount()
     retAccount = (rand() % (max - min)) + min;
     return retAccount;
 }
+
+int getGroupAccount()
+{
+    srand((unsigned int)time(NULL));
+    int retAccount = 0;
+    int min = 40000;
+    int max = 50000;
+    retAccount = (rand() % (max - min)) + min;
+    return retAccount;
+}

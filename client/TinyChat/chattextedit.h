@@ -9,11 +9,17 @@ class chatTextEdit : public QTextEdit
 {
 public:
     chatTextEdit(friendInfo*);
+    chatTextEdit(groupInfo*);
 public:
     int getAccount();
     char* getName();
+public:
+    int getGroupAccount();
+    char* getGroupName();
+    int getGroupSize();
 private:
     friendInfo* friInfo;
+    groupInfo* gInfo;
 };
 
 #endif // CHATTEXTEDIT_H
