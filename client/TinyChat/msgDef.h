@@ -68,7 +68,9 @@ enum
     command_groupList,
     command_privateChat,
     command_groupChat,
-    command_refreshFriendStatus
+    command_refreshFriendStatus,
+    command_addFriend,
+    command_searchAccount
 };
 
 //与界面交互的数据结构
@@ -174,7 +176,7 @@ struct groupInfo
     int account;
     char name[30];
     int size;
-    vector<groupMemInfo*>   groupMemInfoList;   //存放所有群聊用户信息
+    std::vector<groupMemInfo*>   groupMemInfoList;   //存放所有群聊用户信息
 };
 
 //私聊请求
@@ -193,6 +195,37 @@ struct groupChatReq
     int m_msgLen;       //消息长度
     int type;
     int m_groupAccount; //发送的群聊账号
+};
+
+//添加好友请求
+struct addFriendInfoReq
+{
+    int senderAccount;
+    int receiverAccount;
+    char message[60];
+};
+
+//添加好友回复
+struct addFriendInfoReply
+{
+    int senderAccount;
+    int receiverAccount;
+    int is_agree;       //1-同意  0-不同意
+};
+
+//查找账户信息请求
+struct searchAccountReq
+{
+    int account;
+};
+
+//查找账户信息回复
+struct searchAccountReply
+{
+    int m_account;
+    char name[30];
+    bool is_friend;
+    bool is_online;
 };
 
 //定义用户好友表

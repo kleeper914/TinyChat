@@ -13,10 +13,9 @@
 #include "json/json.h"
 #include <QTcpSocket>
 #include <QDateTime>
-using namespace std;
 
-#define SERVER_IP	"02f41a6ab1466626.natapp.cc"
-#define SERVER_PORT	 9190
+#define SERVER_IP	"server ip"
+#define SERVER_PORT	 //server port
 
 #define LOGINFO() qDebug().noquote()<<QDateTime::currentDateTime().toString("yyyy-MM-dd hh:mm:ss zzz")\
 <<"["<<__FILE__<<":"<<__LINE__<<"]["<<__FUNCTION__<<"]"

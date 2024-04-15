@@ -67,6 +67,6 @@ int main(int argc, char* argv[])
         *arg = clnt_sock;
         CREATE_THREAD(NULL, 1024*4, true, event_handle, (void*) arg, NULL);
     }
-
+    close(serv_sock);
     return 0;
 }

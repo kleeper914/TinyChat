@@ -5,6 +5,9 @@
 #include "basic.h"
 #include "msgDef.h"
 
+#define LABEL_WIDTH 20
+#define BORDER_WIDTH 5
+
 class groupChatButton : public QPushButton
 {
 public:

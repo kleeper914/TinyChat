@@ -6,6 +6,7 @@
 #include <QGraphicsDropShadowEffect>
 #include <QPushButton>
 #include <QNetworkProxy>
+#include <QUrl>
 
 Widget::Widget(QWidget *parent)
     : QWidget(parent)
@@ -60,10 +61,7 @@ void Widget::init_privateChat()
         friendButtonList[i] = new privateChatButton(ite->second);
         friendButtonList[i]->setText(ite->second->name);
         privateButtonWidgetLayout->addWidget(friendButtonList[i]);
-        // connect(friendButtonList[i], &QPushButton::clicked, [this, i](){
-        //     friendAccount_to_chat = friendButtonList[i]->getFriendAccount();
-        //     LOGINFO() << "当前要发送数据的好友账号是: " << friendAccount_to_chat;
-        // });
+
         //创建每个好友对应的对话框
         privateChatPageList[i] = new privateChatPage(ite->second);
         ui->stackedWidget_chat->addWidget(privateChatPageList[i]);
@@ -75,6 +73,7 @@ void Widget::init_privateChat()
         privateChatTextBrowserList[i] = new chatTextBrowser(ite->second);
         privateChatLayoutList[i]->addWidget(privateChatTextBrowserList[i]);
         privateChatTextEditList[i] = new chatTextEdit(ite->second);
+        privateChatTextEditList[i]->installEventFilter(this);   //设置事件过滤器
         privateChatLayoutList[i]->addWidget(privateChatTextEditList[i]);
         privateChatLayoutList[i]->setStretch(0, 3);
         privateChatLayoutList[i]->setStretch(1, 1);
@@ -95,6 +94,8 @@ void Widget::init_privateChat()
                 ui->status_label->setText("离线");
             }
             edit_to_chat = privateChatTextEditList[i];
+            //将消息未读数置零
+            friendButtonList[i]->num_not_read_zero();
         });
     }
     LOGINFO() << "私聊界面初始化完成";
@@ -138,6 +139,7 @@ void Widget::insert_groupPage()
     newLayout->addWidget(groupTextBrowser);
     groupChatTextBrowserList.push_back(groupTextBrowser);
     chatTextEdit* groupTextEdit = new chatTextEdit(ite_groupInfoMap->second);
+    groupTextEdit->installEventFilter(this);    //设置事件过滤器
     newLayout->addWidget(groupTextEdit);
     groupChatTextEditList.push_back(groupTextEdit);
     newLayout->setStretch(0, 3);
@@ -220,6 +222,11 @@ void Widget::init()
         }
     }while(is_login == false);
 
+    //初始化音频
+    player = new QMediaPlayer;
+    output = new QAudioOutput;
+    player->setAudioOutput(output);
+
     connect(m_socket, SIGNAL(readyRead()), this, SLOT(readyReadSlot()));
 
     getFriendList();
@@ -261,6 +268,16 @@ void Widget::closeEvent(QCloseEvent* event)
         {
             //退出成功
             LOGINFO() << "退出成功，用户名为：" << m_uInfo.m_userName;
+            if(pBody != NULL)
+            {
+                free(pBody);
+                pBody = NULL;
+            }
+            if(head != NULL)
+            {
+                free(head);
+                head = NULL;
+            }
             break;
         }
         if(pBody != NULL)
@@ -400,8 +417,8 @@ int Widget::signals_handle(messagePacket* msgPacket)
 {
     messageHead* head = (messageHead*)msgPacket->head;
     messageBody* body = (messageBody*)msgPacket->body;
-    LOGINFO() << "mark : " << head->mark << "\tlength : " << head->len << '\n';
-    LOGINFO() << "received command: " << body->command << '\n';
+    LOGINFO() << "mark : " << head->mark << "\tlength : " << head->len;
+    LOGINFO() << "received command: " << body->command;
     LOGINFO() << "sizeof(messageHead): " << sizeof(messageHead) << " sizeof(messageBody): " << sizeof(messageBody);
 
     switch (body->command)
@@ -429,6 +446,34 @@ int Widget::signals_handle(messagePacket* msgPacket)
         break;
     case command_refreshFriendStatus:
         refreshFriendStatusHandle(msgPacket->body + sizeof(messageBody));
+        break;
+    case command_searchAccount:
+        searchAccountHandle(msgPacket->body + sizeof(messageBody));
+        break;
+    case command_addFriend:
+        if(body->type == 1)     //接收到请求
+        {
+            addFriendReqHandle(msgPacket->body + sizeof(messageBody));
+        }
+        else if(body->type == 2)    //接收到回复
+        {
+            //接收到服务端对请求的回复
+            if(head->len - sizeof(messageBody) == 0)
+            {
+                if(body->error == 0)
+                {
+                    LOGINFO() << "发送请求成功...";
+                }
+                else
+                {
+                    LOGINFO() << "发送请求失败...error: " << body->error;
+                }
+            }
+            else
+            {
+                addFriendReplyHandle(msgPacket->body + sizeof(messageBody));
+            }
+        }
         break;
     }
     return 0;
@@ -504,6 +549,7 @@ int Widget::groupListHandle(void* message)
 int Widget::privateChatHandle(void* message)
 {
     LOGINFO() << "收到聊天消息";
+
     privateChatReq* priChatReq = (privateChatReq*)message;
     //如果发送请求中的好友账号为用户账号
     if(priChatReq->m_friendAccount == m_uInfo.m_account)
@@ -524,6 +570,21 @@ int Widget::privateChatHandle(void* message)
         {
             free(buf);
             buf = NULL;
+        }
+        //更新消息未读数；若未设置免打扰，响起提示音
+        privateChatButton* button_to_change = NULL;
+        for(int i = 0; i < m_friendInfoMap.size(); i++)
+        {
+            if(sendAccount == friendButtonList[i]->getFriendAccount())
+            {
+                LOGINFO() << "找到了对应的私聊按钮";
+                button_to_change = friendButtonList[i];
+            }
+        }
+        if(button_to_change != NULL)
+        {
+            button_to_change->num_not_read_plus();
+            messageAlert();
         }
     }
     return true;
@@ -567,6 +628,31 @@ int Widget::refreshFriendStatusHandle(void* message)
     friendInfoMap::iterator ite = m_friendInfoMap.find(refreshStatusReply->m_account);
     ite->second->status = false;
 
+    return true;
+}
+
+int Widget::searchAccountHandle(void* message)
+{
+    LOGINFO() << "收到searchAccountReply";
+    searchAccountReply* searchReply = (searchAccountReply*) message;
+    LOGINFO() << "account: " << searchReply->m_account << " name: " << searchReply->name << " is_friend: " << searchReply->is_friend << " is_online: " << searchReply->is_online;
+    emit_searchAccountFinish(searchReply);
+    return true;
+}
+
+int Widget::addFriendReqHandle(void* message)
+{
+    addFriendInfoReq* addFriReq = (addFriendInfoReq*) message;
+    LOGINFO() << "receive addFriend request...";
+    LOGINFO() << "sender: " << addFriReq->senderAccount << " receiver: " << addFriReq->receiverAccount << " message: " << addFriReq->message;
+
+
+
+    return true;
+}
+
+int Widget::addFriendReplyHandle(void* message)
+{
     return true;
 }
 
@@ -675,6 +761,7 @@ void Widget::on_groupChat_clicked()
 void Widget::on_sendData_clicked()
 {
     LOGINFO() << "开始发送数据...";
+
     if(edit_to_chat == NULL)
     {
         LOGINFO() << "未选中聊天对象";
@@ -742,11 +829,96 @@ void Widget::on_sendData_clicked()
     }
 }
 
+bool Widget::eventFilter(QObject* target, QEvent* event)
+{
+    for(int i = 0; i < m_friendInfoMap.size(); i++)
+    {
+        if(target == privateChatTextEditList[i])
+        {
+            QKeyEvent* k = static_cast<QKeyEvent*>(event);
+            if(k->key() == Qt::Key_Return || k->key() == Qt::Key_Enter)
+            {
+                on_sendData_clicked();
+                return true;
+            }
+        }
+    }
+
+    for(int i = 0; i < groupChatTextEditList.size(); i++)
+    {
+        if(target == groupChatTextEditList[i])
+        {
+            QKeyEvent* k = static_cast<QKeyEvent*>(event);
+            if(k->key() == Qt::Key_Return || k->key() == Qt::Key_Enter)
+            {
+                on_sendData_clicked();
+                return true;
+            }
+        }
+    }
+
+    return false;
+}
 
 void Widget::on_userInfo_button_clicked()
 {
     userInfoDlg uInfoDlg(&m_uInfo);
     uInfoDlg.show();
     uInfoDlg.exec();
+}
+
+
+void Widget::on_pushButton_add_clicked()
+{
+    addFriendDlg* addFriDlg = new addFriendDlg();
+    connect(addFriDlg, SIGNAL(emit_searchButtonClicked(int)), this, SLOT(send_searchAccount(int)));
+    connect(this, SIGNAL(emit_searchAccountFinish(searchAccountReply*)), addFriDlg, SLOT(displaySearchAccount(searchAccountReply*)));
+    connect(addFriDlg, SIGNAL(emit_addButtonClicked(int,char*)), this, SLOT(send_addFriend(int,char*)));
+    //addFriDlg->setParent(this);
+    addFriDlg->show();
+}
+
+void Widget::send_searchAccount(int account)
+{
+    searchAccountReq* searchReq = new searchAccountReq;
+    searchReq->account = account;
+    sendMsg((char*)searchReq, sizeof(searchAccountReq), command_searchAccount);
+    if(searchReq != NULL)
+    {
+        delete searchReq;
+        searchReq = NULL;
+    }
+}
+
+void Widget::send_addFriend(int account, char* message)
+{
+    addFriendInfoReq* addFriReq = new addFriendInfoReq;
+    addFriReq->senderAccount = m_uInfo.m_account;
+    addFriReq->receiverAccount = account;
+    memmove(addFriReq->message, message, strlen(message));
+    sendMsg(addFriReq, sizeof(addFriendInfoReq), command_addFriend);
+    if(message != NULL)
+    {
+        free(message);
+        message = NULL;
+    }
+    if(addFriReq != NULL)
+    {
+        delete addFriReq;
+        addFriReq = NULL;
+    }
+}
+
+void Widget::messageAlert()
+{
+    QString run_path = QCoreApplication::applicationDirPath();
+    QString path = run_path + "/source/QQ.wav";
+    player->setSource(QUrl::fromLocalFile(path));
+    player->play();
+}
+
+void Widget::on_pushButton_TODO_clicked()
+{
+
 }
 

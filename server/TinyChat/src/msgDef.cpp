@@ -154,7 +154,7 @@ int Task::readBody()
             messageBasicHandle();
             m_bufLen = 0;
             is_finish = true;
-            return READ_AGAIN;
+            //return READ_AGAIN;
         }
     }
     return READ_OK;
@@ -215,6 +215,19 @@ int Task::messageHandle(messagePacket* msgPacket)
             break;
         case command_refreshFriendStatus:
             refreshFriendStatusHandle(this, msgPacket->body + sizeof(messageBody));
+            break;
+        case command_addFriend:
+            if(body->type == 1) //type == 1 -> request
+            {
+                addFriendReqHandle(this, msgPacket->body + sizeof(messageBody));
+            }
+            else if(body->type == 2)    //type == 2 -> reply
+            {
+                addFriendReplyHandle(this, msgPacket->body + sizeof(messageBody));
+            }
+            break;
+        case command_searchAccount:
+            searchAccountHandle(msgPacket->body + sizeof(messageBody));
             break;
     }
     delete msgPacket;
@@ -802,6 +815,213 @@ int Task::refreshFriendStatusHandle(void* arg, void* message)
             }
         }
         ite++;
+    }
+
+    return 0;
+}
+
+int Task::addFriendReqHandle(void* arg, void* message)
+{
+    addFriendInfoReq* addfriReq = (addFriendInfoReq*) message;
+    LOGINFO("receive addFriend request...\n");
+    LOGINFO("addFriendInfo: sendeAccount: %d, receicerAccount: %d, message: %s\n", addfriReq->senderAccount, addfriReq->receiverAccount, addfriReq->message);
+
+    //search if the friendAccount is online
+    userInfoMap::iterator iter = m_userInfoMap.find(addfriReq->receiverAccount);
+    if(iter == m_userInfoMap.end())
+    {
+        LOGINFO("this account is not exist or not online\n");
+        sendMsg(m_socket, NULL, 0, command_addFriend, -1, 1);
+        return -1;
+    }
+    else
+    {
+        //the receiver is online
+        userInfo* recvInfo = iter->second;
+    }
+
+    //search map if the two accounts are already friends
+    friendInfoMap::iterator ite_friend = m_friendInfoMap.find(iter->first);
+    addFriendInfoMap::iterator ite_addFriend = m_addFriendInfoMap.begin();
+    //the two accounts are already friends
+    if(ite_friend != m_friendInfoMap.end())
+    {
+
+        LOGINFO("the two accounts are already friends\n");
+        sendMsg(m_socket, NULL, 0, command_addFriend, -1, 1);
+        return -1;
+    }
+    //the two accounts are not friends
+    else
+    {
+        //search the m_addFriendInfoMap if the sender already sent a request
+        while(ite_addFriend != m_addFriendInfoMap.end())
+        {
+            if(ite_addFriend->second->senderAccount == addfriReq->senderAccount && ite_addFriend->second->receiverAccount == addfriReq->receiverAccount)
+            {
+                //the sender has already send a request
+                LOGINFO("the sender has already send a request\n");
+                sendMsg(m_socket, NULL, 0, command_addFriend, -1, 2);
+                return -1;
+            }
+            ite_addFriend++;
+        }
+
+        addFriendInfo* addInfo = new addFriendInfo;
+        addInfo->senderAccount = addfriReq->senderAccount;
+        addInfo->receiverAccount = addfriReq->receiverAccount;
+        addInfo->is_agree = -1;
+        int index = m_addFriendInfoMap.size();
+        m_addFriendInfoMap.insert(std::pair(index, addInfo));
+        LOGINFO("insert into a addFriendInfo: sender: %d, receiver: %d\n", addInfo->senderAccount, addInfo->receiverAccount);
+
+        //send request to the receiver
+        sendMsg(iter->second->m_socket, message, sizeof(addFriendInfoReq), command_addFriend, 0, 1);
+        //send success to the client
+        sendMsg(m_socket, NULL, 0, command_addFriend, 0, 2);
+    }
+
+    return 0;
+}
+
+int Task::addFriendReplyHandle(void* arg, void* message)
+{
+    Task* pthis = (Task*)arg;
+    addFriendInfoReply* replyInfo = (addFriendInfoReply*) message;
+    LOGINFO("receive addFriendInfoReply: sender: %d, recriver: %d, status: %d\n", replyInfo->senderAccount, replyInfo->receiverAccount, replyInfo->is_agree);
+
+    userInfo* uInfo = NULL;
+    userInfoMap::iterator ite_user = m_userInfoMap.find(replyInfo->senderAccount);
+    if(ite_user != m_userInfoMap.end())
+    {
+        uInfo = ite_user->second;
+    }
+    else
+    {
+        //the sender is not online
+        LOGINFO("the sender is not online\n");
+        sendMsg(m_socket, NULL, 0, command_addFriend, -1, 2);
+        return -1;
+    }
+
+    friendInfoMap::iterator ite_friend = m_friendInfoMap.find(replyInfo->receiverAccount);
+    addFriendInfoMap::iterator ite_addFriend = m_addFriendInfoMap.begin();
+    if(ite_friend != m_friendInfoMap.end())
+    {
+        LOGINFO("the two accounts are already friends\n");
+        sendMsg(m_socket, NULL, 0, command_addFriend, -1, 2);
+    }
+    else
+    {
+        while(ite_addFriend != m_addFriendInfoMap.end())
+        {
+            if(ite_addFriend->second->senderAccount == replyInfo->senderAccount && ite_addFriend->second->receiverAccount == replyInfo->receiverAccount)
+            {
+                if(replyInfo->is_agree == 0)
+                {
+                    m_addFriendInfoMap.erase(ite_addFriend->first);
+                    sendMsg(ite_user->second->m_socket, (char*)replyInfo, sizeof(addFriendInfoReply), command_addFriend, 0, 2);
+                    return 0;
+                }
+                else if(replyInfo->is_agree == 1)
+                {
+                    m_addFriendInfoMap.erase(ite_addFriend->first);
+
+                    myDB mydb;
+                    mydb.myDB_init();
+                    char query[500];
+                    string** result = NULL;
+                    //search the two user_id by the accounts
+                    int sender_id = 0;
+                    sprintf(query, "select id from user where account = %d", replyInfo->senderAccount);
+                    mydb.myDB_query(query);
+                    result = mydb.getResult();
+                    sender_id = atoi(result[0][0].c_str());
+                    mydb.cleanResult();
+
+                    int receiver_id = 0;
+                    sprintf(query, "select id from user where account = %d", replyInfo->receiverAccount);
+                    mydb.myDB_query(query);
+                    result = mydb.getResult();
+                    receiver_id = atoi(result[0][0].c_str());
+                    mydb.cleanResult();
+
+                    //insert friend relationship into mysql table
+                    sprintf(query, "insert into friend_relation(user_id1, user_id2) VALUES (%d, %d)", sender_id, receiver_id);
+                    mydb.myDB_exe(query);
+
+                    sendMsg(m_socket, NULL, 0, command_addFriend, 0, 2);
+                    sendMsg(ite_user->second->m_socket, (char*)message, sizeof(addFriendInfoReply), command_addFriend, 0, 2);
+                    return 0;
+                }
+            }
+            ite_addFriend++;
+        }
+
+        sendMsg(m_socket, NULL, 0, command_addFriend, -1, 2);
+        return -1;
+    }
+
+    return 0;
+}
+
+int Task::searchAccountHandle(void* message)
+{
+    searchAccountReq* searchReq = (searchAccountReq*)message;
+    LOGINFO("receive search Account request, search account: %d\n", searchReq->account);
+
+    searchAccountReply* searchReply = new searchAccountReply;
+    searchReply->m_account = searchReq->account;
+
+    myDB mydb;
+    mydb.myDB_init();
+    char query[200];
+    sprintf(query, "select username from user where account = %d", searchReq->account);
+    mydb.myDB_query(query);
+    string** result = mydb.getResult();
+    LOGINFO("result[0][0]: %s\n", result[0][0].c_str());
+    if(result != NULL){
+        memmove(searchReply->m_name, result[0][0].c_str(), result[0][0].size());
+        LOGINFO("search account: %d, name: %s\n", searchReq->account, searchReply->m_name);
+    }
+    else{
+        LOGINFO("the search account is not exist\n");
+        return -1;
+    }
+    userInfoMap::iterator ite_user = m_userInfoMap.find(searchReq->account);
+    friendInfoMap::iterator ite_friend = m_friendInfoMap.find(searchReq->account);
+    if(ite_user != m_userInfoMap.end())
+    {
+        //searched account is online
+        LOGINFO("searched account is online\n");
+        searchReply->is_online = true;
+    }
+    else
+    {
+        //searched account is not online
+        LOGINFO("searched account is not online\n");
+        searchReply->is_online = false;
+    }
+
+    if(ite_friend != m_friendInfoMap.end())
+    {
+        //searched account is friend
+        LOGINFO("searched account is friend\n");
+        searchReply->is_friend = true;
+    }
+    else
+    {
+        //searched account is not friend
+        LOGINFO("searched account is not friend\n");
+        searchReply->is_friend = false;
+    }
+
+    LOGINFO("search account: %d, name: %s, is_online: %d, is_friend: %d\n", searchReq->account, searchReply->m_name, searchReply->is_online, searchReply->is_friend);
+    sendMsg(m_socket, (char*)searchReply, sizeof(searchAccountReply), command_searchAccount);
+    if(searchReply != NULL)
+    {
+        delete searchReply;
+        searchReply = NULL;
     }
 
     return 0;

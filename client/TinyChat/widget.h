@@ -17,8 +17,11 @@
 #include <QPushButton>
 #include <QLabel>
 #include <QFont>
+#include <QMediaPlayer>
+#include <QAudioOutput>
 #include "registerdlg.h"
 #include "userinfodlg.h"
+#include "addfrienddlg.h"
 
 QT_BEGIN_NAMESPACE
 namespace Ui {
@@ -40,6 +43,8 @@ signals:
     void groupInsert_finish();
     void emit_friendAccount(int);
     void emit_groupAccount(int);
+    void emit_searchAccount(void* message);
+    void emit_searchAccountFinish(searchAccountReply*);
 
 public slots:
     void init_privateChat();
@@ -59,10 +64,17 @@ public:
     int getFriendList();
     int getGroupList();
     int refreshFriendStatusHandle(void* message);
+    int searchAccountHandle(void* message);
+    int addFriendReqHandle(void* message);
+    int addFriendReplyHandle(void* message);
+
+    bool eventFilter(QObject* target, QEvent* event) override;
+    void messageAlert();
 
     friendInfo* searchFriendInfo(int account);
     groupInfo* searchGroupInfo(int account);
     groupMemInfo* searchGroupMemInfo(int account, int groupAccount);
+    privateChatButton* searchPrivateButton(int account);
 
     void displayUserMessage(chatTextBrowser*, QString*);       //将用户发出的聊天信息显示在textbrowser内
     void displayMessage(chatTextBrowser*, QString*, friendInfo*);  //将收到的聊天信息显示在textbrowser内
@@ -72,18 +84,20 @@ private:
     void init();
     void initUI();
     void initGroupChat();
-    void closeEvent(QCloseEvent* event);
+    void closeEvent(QCloseEvent* event) override;
     void login();
-    void sendMsg(void* buf, int bufLen, int command, int error = 0, int type = 0);
+    void sendMsg(void* buf, int bufLen, int command, int error = 0, int type = 1);
 private slots:
     int signals_handle(messagePacket*);
+    void send_searchAccount(int account);
+    void send_addFriend(int account, char* message);
     void readyReadSlot();
     void on_privateChat_clicked();
     void on_groupChat_clicked();
-
     void on_sendData_clicked();
-
     void on_userInfo_button_clicked();
+    void on_pushButton_add_clicked();
+    void on_pushButton_TODO_clicked();
 
 private:
     Ui::Widget *ui;
@@ -100,6 +114,8 @@ private:
     int         groupAccount_to_chat;           //当前聊天的群聊账号
     friendInfoMap   m_friendInfoMap;            //存放所有好友信息
     groupInfoMap m_groupInfoMap;                //存放所有群聊信息
+    QMediaPlayer* player;
+    QAudioOutput* output;
 private:
     QWidget*            privateButtonWidget;
     privateChatButton** friendButtonList;           //存放好友按钮索引
@@ -110,10 +126,10 @@ private:
 private:
     QWidget*            groupButtonWidget;
     QVBoxLayout* groupButtonWidgetLayout;
-    vector<groupChatButton*>   groupButtonList;        //存放群聊按钮索引
-    vector<groupChatPage*>     groupChatPageList;      //存放群聊页面索引
-    vector<QVBoxLayout*>       groupChatLayoutList;    //存放群聊页面layout索引
-    vector<chatTextEdit*>      groupChatTextEditList;  //存放群聊编辑框索引
-    vector<chatTextBrowser*>   groupChatTextBrowserList;   //存放群聊浏览框索引
+    std::vector<groupChatButton*>   groupButtonList;        //存放群聊按钮索引
+    std::vector<groupChatPage*>     groupChatPageList;      //存放群聊页面索引
+    std::vector<QVBoxLayout*>       groupChatLayoutList;    //存放群聊页面layout索引
+    std::vector<chatTextEdit*>      groupChatTextEditList;  //存放群聊编辑框索引
+    std::vector<chatTextBrowser*>   groupChatTextBrowserList;   //存放群聊浏览框索引
 };
 #endif // WIDGET_H

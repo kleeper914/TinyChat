@@ -15,7 +15,7 @@
   </property>
   <property name="windowIcon">
    <iconset resource="TinyChat.qrc">
-    <normaloff>:/new/prefix1/images/images/bitbug_favicon.ico</normaloff>:/new/prefix1/images/images/bitbug_favicon.ico</iconset>
+    <normaloff>:/images/images/bitbug_favicon.ico</normaloff>:/images/images/bitbug_favicon.ico</iconset>
   </property>
   <layout class="QVBoxLayout" name="verticalLayout">
    <item>

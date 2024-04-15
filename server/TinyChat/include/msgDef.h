@@ -205,10 +205,42 @@ struct groupStoreInfo
     groupMemInfoMap m_groupMemInfoMap;
 };
 
+//user to be friend info
+struct addFriendInfo
+{
+    int senderAccount;
+    int receiverAccount;
+    int is_agree;   //1-agree   -1-unknow   0-reject
+};
+
 //add friend request
 struct addFriendInfoReq
 {
-    int sendAccount;
+    int senderAccount;
+    int receiverAccount;
+    char message[60];
+};
+
+struct addFriendInfoReply
+{
+    int senderAccount;
+    int receiverAccount;
+    int is_agree;       //1-agree   0-not agree
+};
+
+//search account request
+struct searchAccountReq
+{
+    int account;
+};
+
+//search account reply
+struct searchAccountReply
+{
+    int m_account;
+    char m_name[30];
+    bool is_friend;
+    bool is_online;
 };
 
 /*
@@ -240,7 +272,9 @@ enum
     command_groupList,
     command_privateChat,
     command_groupChat,
-    command_refreshFriendStatus
+    command_refreshFriendStatus,
+    command_addFriend,
+    command_searchAccount
 };
 
 /*
@@ -249,8 +283,10 @@ enum
 typedef std::map<int, userInfo*> userInfoMap;
 typedef std::map<int, friendInfo>friendInfoMap;
 typedef std::map<int, groupStoreInfo*>groupInfoMap;
+typedef std::map<int, addFriendInfo*>addFriendInfoMap;
 
 static userInfoMap m_userInfoMap;
+static addFriendInfoMap m_addFriendInfoMap;
 
 /*
 *   define the class of task processing
@@ -274,6 +310,9 @@ public:
     int privateChatHandle(void* message);
     int groupChatHandle(void* message);
     int refreshFriendStatusHandle(void* arg, void* message);
+    int addFriendReqHandle(void* arg, void* message);
+    int addFriendReplyHandle(void* arg, void* message);
+    int searchAccountHandle(void* message);
 public:
     static void sendMsg(int socket, void* buf, int bufLen, int command, int error = 0, int type = 2);
 private:
@@ -291,6 +330,7 @@ private:
     bool is_login;
     friendInfoMap m_friendInfoMap;
     groupInfoMap m_groupInfoMap;
+    //addFriendInfoMap m_addFriendInfoMap;
 };
 
 #endif

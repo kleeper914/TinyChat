@@ -1,4 +1,4 @@
-QT       += core gui network
+QT       += core gui multimedia network
 LIBS     += -lWs2_32
 INCLUDEPATH += $$PWD/jsoncpp
 include($$PWD/jsoncpp/jsoncpp.pri)
@@ -13,6 +13,7 @@ CONFIG += PRECOMPILED_HEADER
 #DEFINES += QT_DISABLE_DEPRECATED_BEFORE=0x060000    # disables all the APIs deprecated before Qt 6.0.0
 
 SOURCES += \
+    addfrienddlg.cpp \
     basic.cpp \
     chattextbrowser.cpp \
     chattextedit.cpp \
@@ -28,6 +29,7 @@ SOURCES += \
     widget.cpp
 
 HEADERS += \
+    addfrienddlg.h \
     basic.h \
     chattextbrowser.h \
     chattextedit.h \
@@ -43,6 +45,7 @@ HEADERS += \
     widget.h
 
 FORMS += \
+    addfrienddlg.ui \
     logindlg.ui \
     registerdlg.ui \
     userinfodlg.ui \
@@ -55,3 +58,6 @@ else: unix:!android: target.path = /opt/$${TARGET}/bin
 
 RESOURCES += \
     TinyChat.qrc
+
+DISTFILES += \
+    source/QQ message alert tone.wav
