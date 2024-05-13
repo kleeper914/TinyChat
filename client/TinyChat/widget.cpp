@@ -37,6 +37,10 @@ void Widget::initUI()
 
     initGroupChat();
 
+    tododlg = new todoDlg;
+    connect(tododlg, SIGNAL(emit_addFriend_agree(addFriendInfoReq*)), this, SLOT(addFriend_agree(addFriendInfoReq*)));
+    connect(tododlg, SIGNAL(emit_addFriend_reject(addFriendInfoReq*)), this, SLOT(addFriend_reject(addFriendInfoReq*)));
+
     connect(this, SIGNAL(friendList_finish()), this, SLOT(init_privateChat()));
 }
 
@@ -44,7 +48,7 @@ void Widget::init_privateChat()
 {
     privateButtonWidget = new QWidget;
     ui->stackedWidget_button->addWidget(privateButtonWidget);
-    QVBoxLayout* privateButtonWidgetLayout = new QVBoxLayout;
+    privateButtonWidgetLayout = new QVBoxLayout;
     privateButtonWidgetLayout->setAlignment(Qt::AlignTop);
     privateButtonWidget->setLayout(privateButtonWidgetLayout);
     friendInfoMap::iterator ite = m_friendInfoMap.begin();
@@ -95,7 +99,10 @@ void Widget::init_privateChat()
             }
             edit_to_chat = privateChatTextEditList[i];
             //将消息未读数置零
-            friendButtonList[i]->num_not_read_zero();
+            if(friendButtonList[i]->get_num_not_read() != 0)
+            {
+                friendButtonList[i]->num_not_read_zero();
+            }
         });
     }
     LOGINFO() << "私聊界面初始化完成";
@@ -252,11 +259,13 @@ void Widget::closeEvent(QCloseEvent* event)
         return;
     }
 
-    while(1)
+    //发出登出请求
+    sendMsg(NULL, 0, command_logout);
+    //TODO
+    //优化登出请求发出形式
+    QTime timeout = QTime::currentTime().addMSecs(300);    //0.3s超时
+    while(QTime::currentTime() < timeout)   //如果服务端3s没有作出答复，则直接退出程序
     {
-        //发出登出请求
-        sendMsg(NULL, 0, command_logout);
-
         //接收服务端回复
         messageHead* head = (messageHead*)malloc(sizeof(messageHead));
         memset(head, 0, sizeof(messageHead));
@@ -475,6 +484,9 @@ int Widget::signals_handle(messagePacket* msgPacket)
             }
         }
         break;
+    case command_refreshFriendList:
+        refreshFriendListHandle(msgPacket->body + sizeof(messageBody));
+        break;
     }
     return 0;
 }
@@ -573,12 +585,21 @@ int Widget::privateChatHandle(void* message)
         }
         //更新消息未读数；若未设置免打扰，响起提示音
         privateChatButton* button_to_change = NULL;
-        for(int i = 0; i < m_friendInfoMap.size(); i++)
+        int num_new_friend = new_friend_button_list.size();
+        for(int i = 0; i < m_friendInfoMap.size()-num_new_friend; i++)
         {
             if(sendAccount == friendButtonList[i]->getFriendAccount())
             {
                 LOGINFO() << "找到了对应的私聊按钮";
                 button_to_change = friendButtonList[i];
+            }
+        }
+        for(int i = 0; i < num_new_friend; i++)
+        {
+            if(sendAccount == new_friend_button_list[i]->getFriendAccount())
+            {
+                LOGINFO() << "找到了对应的私聊按钮";
+                button_to_change = new_friend_button_list[i];
             }
         }
         if(button_to_change != NULL)
@@ -646,13 +667,117 @@ int Widget::addFriendReqHandle(void* message)
     LOGINFO() << "receive addFriend request...";
     LOGINFO() << "sender: " << addFriReq->senderAccount << " receiver: " << addFriReq->receiverAccount << " message: " << addFriReq->message;
 
-
+    //将收到的请求同步到tododlg中
+    tododlg->insert_addFriendReqRecv(addFriReq);
 
     return true;
 }
 
 int Widget::addFriendReplyHandle(void* message)
 {
+    addFriendInfoReply* addFriReply = (addFriendInfoReply*)message;
+    LOGINFO() << "receive addFriendInfoReply, senderAccount: " << addFriReply->senderAccount << " receiverAccount: " << addFriReply->receiverAccount << "是否同意: " << addFriReply->is_agree;
+
+    if(addFriReply->is_agree == true)
+    {
+        //todo
+        //向服务端发送更新好友表信息
+        refreshFriendReq* refreshFriReq = new refreshFriendReq;
+        refreshFriReq->account = addFriReply->senderAccount;
+        sendMsg((char*)refreshFriReq, sizeof(refreshFriendReq), command_refreshFriendList);
+        if(refreshFriReq != NULL)
+        {
+            delete refreshFriReq;
+            refreshFriReq = NULL;
+        }
+        LOGINFO() << "发送更新好友信息请求...";
+        //todo
+        //更新tododlg ui
+        QString str = "state: 已同意";
+        tododlg->finish_addFriendReqSend(addFriReply->senderAccount, str);
+    }
+    else
+    {
+        QString str = "state: 已拒绝";
+        tododlg->finish_addFriendReqSend(addFriReply->senderAccount, str);
+    }
+
+    return true;
+}
+
+int Widget::refreshFriendListHandle(void* message)
+{
+    refreshFriendReply* refreshFriReply = (refreshFriendReply*)message;
+    LOGINFO() << "receive refreshFriendReply account = " << refreshFriReply->account << " name = " << refreshFriReply->name;
+
+    //todo
+    //将好友信息插入到friendInfoMap
+    friendInfo* new_friend = new friendInfo;
+    new_friend->m_account = refreshFriReply->account;
+    memcpy(new_friend->name, refreshFriReply->name, sizeof(refreshFriReply->name));
+    new_friend->status = true;
+    m_friendInfoMap.insert(std::pair(refreshFriReply->account, new_friend));
+
+    //检查是否插入好友表成功
+    friendInfoMap::iterator ite_friend = m_friendInfoMap.find(new_friend->m_account);
+    if(ite_friend != m_friendInfoMap.end())
+    {
+        LOGINFO() << "插入好友表成功";
+    }
+
+    //创建好友聊天界面
+    //创建按钮
+    privateChatButton* new_friend_button = new privateChatButton(new_friend);
+    new_friend_button->setText(refreshFriReply->name);
+    privateButtonWidgetLayout->addWidget(new_friend_button);
+    new_friend_button_list.push_back(new_friend_button);
+    //创建对话框
+    privateChatPage* new_friend_page = new privateChatPage(new_friend);
+    ui->stackedWidget_chat->addWidget(new_friend_page);
+    new_friend_page_list.push_back(new_friend_page);
+    QVBoxLayout* new_friend_chat_layout = new QVBoxLayout;
+    new_friend_chat_layout->setAlignment(Qt::AlignTop);
+    new_friend_page->setLayout(new_friend_chat_layout);
+    new_friend_chat_layout_list.push_back(new_friend_chat_layout);
+
+    //加入textedit和textbrowser组件
+    chatTextBrowser* new_friend_browser = new chatTextBrowser(new_friend);
+    new_friend_chat_layout->addWidget(new_friend_browser);
+    new_friend_browser_list.push_back(new_friend_browser);
+    chatTextEdit* new_friend_edit = new chatTextEdit(new_friend);
+    //new_friend_edit->installEventFilter(this);
+    new_friend_chat_layout->addWidget(new_friend_edit);
+    new_friend_edit_list.push_back(new_friend_edit);
+    new_friend_chat_layout->setStretch(0, 3);
+    new_friend_chat_layout->setStretch(1, 1);
+
+    int num = new_friend_button_list.size();
+    LOGINFO() << "新建好友信息数量： " << num;
+    connect(new_friend_button_list[num - 1], &QPushButton::clicked, [this, i = num-1](){
+        chat_type = 0;
+        friendAccount_to_chat = new_friend_button_list[i]->getFriendAccount();
+        LOGINFO() << "当前要发送数据的好友账号是： " << friendAccount_to_chat;
+        ui->stackedWidget_chat->setCurrentWidget(new_friend_page_list[i]);
+        LOGINFO() << "设置聊天框标签为" << new_friend_button_list[i]->getFriendName();
+        ui->chatNameLabel->setText(new_friend_button_list[i]->getFriendName());
+        if(new_friend_button_list[i]->getFriendStatus() == true)
+        {
+            ui->status_label->setText("在线");
+        }
+        else if(new_friend_button_list[i]->getFriendStatus() == false)
+        {
+            ui->status_label->setText("离线");
+        }
+        edit_to_chat = new_friend_edit_list[i];
+        //将消息未读数置零
+        if(new_friend_button_list[i]->get_num_not_read() != 0)
+        {
+            new_friend_button_list[i]->num_not_read_zero();
+        }
+    });
+
+    LOGINFO() << "新建好友界面完成";
+
     return true;
 }
 
@@ -662,7 +787,7 @@ void Widget::displayUserMessage(chatTextBrowser* textBrowser, QString* message)
     QString timeStr = dateTime.toString("yyyy-MM-dd hh:mm:ss");
     QString uAccount = QString::number(m_uInfo.m_account);
     QString uName = QString(QLatin1String(m_uInfo.m_userName));
-    QString uinfo = uName + "(" + uAccount + ") " + timeStr;
+    QString uinfo = "<font color=\'#00FF00\'>"+uName + "(" + uAccount + ") " + timeStr+"</font>";
     textBrowser->append(uinfo);
     textBrowser->append(*message);
 }
@@ -673,7 +798,7 @@ void Widget::displayMessage(chatTextBrowser* browser, QString* message, friendIn
     QString timeStr = dateTime.toString("yyyy-MM-dd hh:mm:ss");
     QString friAccount = QString::number(friInfo->m_account);
     QString friName = QString(QLatin1String(friInfo->name));
-    QString friendInfo = friName + "(" + friAccount + ") " + timeStr;
+    QString friendInfo = "<font color=\'#0000FF\'>"+friName + "(" + friAccount + ") " + timeStr+"</font>";
     browser->append(friendInfo);
     browser->append(*message);
 }
@@ -684,18 +809,26 @@ void Widget::displayGroupMessage(chatTextBrowser* browser, QString* message, gro
     QString timeStr = dateTime.toString("yyyy-MM-dd hh:mm:ss");
     QString gmAccount = QString::number(gmInfo->account);
     QString gmName = QString(QLatin1String(gmInfo->name));
-    QString info = gmName + "(" + gmAccount + ") " + timeStr;
+    QString info = "<font color=\'#0000FF\'>"+gmName + "(" + gmAccount + ") " + timeStr+"</font>";
     browser->append(info);
     browser->append(*message);
 }
 
 void Widget::searchPrivateBrowser(int account)
 {
-    for(int i = 0; i < m_friendInfoMap.size(); i++)
+    int num_new_friend = new_friend_browser_list.size();
+    for(int i = 0; i < m_friendInfoMap.size()-num_new_friend; i++)
     {
         if(privateChatTextBrowserList[i]->getAccount() == account)
         {
             browser_to_send =  privateChatTextBrowserList[i];
+        }
+    }
+    for(int i = 0; i < num_new_friend; i++)
+    {
+        if(new_friend_browser_list[i]->getAccount() == account)
+        {
+            browser_to_send = new_friend_browser_list[i];
         }
     }
 }
@@ -773,6 +906,7 @@ void Widget::on_sendData_clicked()
         return;
     }
     QString str = edit_to_chat->toPlainText();
+    LOGINFO() << "将要发送的信息是： " << str;
 
     if(chat_type == 0)  //私聊
     {
@@ -786,9 +920,11 @@ void Widget::on_sendData_clicked()
         priChatReq->m_friendAccount = friendAccount_to_chat;
         memmove(p + sizeof(privateChatReq), str.toStdString().c_str(), str.toStdString().size());
         sendMsg(p, sizeof(privateChatReq) + str.toStdString().size(), command_privateChat);
+        LOGINFO() << "向服务器发送私聊请求";
 
         //将用户的聊天信息显示在textbrowser内
         emit emit_friendAccount(edit_to_chat->getAccount());
+        LOGINFO() << "将要发送消息的聊天框 account: " << browser_to_send->getAccount();
         if(browser_to_send != NULL)
         {
             displayUserMessage(browser_to_send, &str);
@@ -895,6 +1031,7 @@ void Widget::send_addFriend(int account, char* message)
     addFriendInfoReq* addFriReq = new addFriendInfoReq;
     addFriReq->senderAccount = m_uInfo.m_account;
     addFriReq->receiverAccount = account;
+    memset(addFriReq->message, 0, sizeof(addFriReq->message));
     memmove(addFriReq->message, message, strlen(message));
     sendMsg(addFriReq, sizeof(addFriendInfoReq), command_addFriend);
     if(message != NULL)
@@ -902,11 +1039,14 @@ void Widget::send_addFriend(int account, char* message)
         free(message);
         message = NULL;
     }
-    if(addFriReq != NULL)
-    {
-        delete addFriReq;
-        addFriReq = NULL;
-    }
+
+    //todo
+    //将添加好友请求显示在todoDlg中，并实时更新状态
+    //接受者未受理，显示未回复
+    //接收者回复，显示删除按钮，删除该条记录
+    //接收者拒绝，显示已拒绝
+    //接收者同意，显示已同意
+    tododlg->insert_addFriendReqSend(addFriReq);
 }
 
 void Widget::messageAlert()
@@ -919,6 +1059,55 @@ void Widget::messageAlert()
 
 void Widget::on_pushButton_TODO_clicked()
 {
-
+    tododlg->show();
 }
 
+void Widget::addFriend_agree(addFriendInfoReq* addFriReq)
+{
+    LOGINFO() << "同意好友请求";
+    addFriendInfoReply* addFriReply = new addFriendInfoReply;
+    addFriReply->senderAccount = m_uInfo.m_account;
+    addFriReply->receiverAccount = addFriReq->senderAccount;
+    addFriReply->is_agree = true;
+    LOGINFO() << "发送好友请求的回复";
+    sendMsg(addFriReply, sizeof(addFriendInfoReply), command_addFriend, 0, 2);
+    //并发送refreshFriend请求
+    refreshFriendReq* refreshFriReq = new refreshFriendReq;
+    refreshFriReq->account = addFriReq->senderAccount;
+    sendMsg((char*)refreshFriReq, sizeof(refreshFriendReq), command_refreshFriendList);
+    if(refreshFriReq != NULL)
+    {
+        delete refreshFriReq;
+        refreshFriReq = NULL;
+    }
+    LOGINFO() << "发送更新好友信息请求...";
+    if(addFriReply != NULL)
+    {
+        delete addFriReply;
+        addFriReply = NULL;
+    }
+    //todo
+    //更新tododlg ui
+    QString str = "state: 已同意";
+    tododlg->finish_addFriendReqRecv(addFriReq->senderAccount, str);
+}
+
+void Widget::addFriend_reject(addFriendInfoReq* addFriReq)
+{
+    LOGINFO() << "拒绝好友请求";
+    addFriendInfoReply* addFriReply = new addFriendInfoReply;
+    addFriReply->senderAccount = m_uInfo.m_account;
+    addFriReply->receiverAccount = addFriReq->senderAccount;
+    addFriReply->is_agree = false;
+    sendMsg(addFriReply, sizeof(addFriendInfoReply), command_addFriend, 0, 2);
+    LOGINFO() << "发送好友请求的回复";
+    if(addFriReply != NULL)
+    {
+        delete addFriReply;
+        addFriReply = NULL;
+    }
+    //todo
+    //更新tododlg ui
+    QString str = "state: 已拒绝";
+    tododlg->finish_addFriendReqRecv(addFriReq->senderAccount, str);
+}

@@ -1,0 +1,124 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>todoDlg</class>
+ <widget class="QDialog" name="todoDlg">
+  <property name="geometry">
+   <rect>
+    <x>0</x>
+    <y>0</y>
+    <width>1008</width>
+    <height>703</height>
+   </rect>
+  </property>
+  <property name="windowTitle">
+   <string>TODO</string>
+  </property>
+  <property name="windowIcon">
+   <iconset resource="TinyChat.qrc">
+    <normaloff>:/images/images/bitbug_favicon.ico</normaloff>:/images/images/bitbug_favicon.ico</iconset>
+  </property>
+  <layout class="QHBoxLayout" name="horizontalLayout">
+   <item>
+    <widget class="QWidget" name="widget_todo_addFriend" native="true">
+     <property name="styleSheet">
+      <string notr="true"/>
+     </property>
+     <layout class="QVBoxLayout" name="verticalLayout" stretch="1,1">
+      <item>
+       <widget class="QWidget" name="widget_todo_addFriendReq" native="true">
+        <layout class="QVBoxLayout" name="verticalLayout_3" stretch="1,10">
+         <item>
+          <widget class="QWidget" name="widget" native="true">
+           <widget class="QLabel" name="label">
+            <property name="geometry">
+             <rect>
+              <x>11</x>
+              <y>11</y>
+              <width>60</width>
+              <height>19</height>
+             </rect>
+            </property>
+            <property name="text">
+             <string>添加好友</string>
+            </property>
+            <property name="textFormat">
+             <enum>Qt::AutoText</enum>
+            </property>
+            <property name="alignment">
+             <set>Qt::AlignCenter</set>
+            </property>
+           </widget>
+          </widget>
+         </item>
+         <item>
+          <widget class="QWidget" name="widget_todo_addFriendReq_list" native="true">
+           <property name="styleSheet">
+            <string notr="true">border: 1px solid black</string>
+           </property>
+          </widget>
+         </item>
+        </layout>
+       </widget>
+      </item>
+      <item>
+       <widget class="QWidget" name="widget_todo_addFriendReply" native="true">
+        <layout class="QVBoxLayout" name="verticalLayout_2" stretch="1,10">
+         <item>
+          <widget class="QWidget" name="widget_2" native="true">
+           <layout class="QVBoxLayout" name="verticalLayout_4">
+            <item>
+             <widget class="QLabel" name="label_2">
+              <property name="text">
+               <string>添加好友请求</string>
+              </property>
+             </widget>
+            </item>
+           </layout>
+          </widget>
+         </item>
+         <item>
+          <widget class="QWidget" name="widget_todo_addFriendReply_list" native="true">
+           <property name="styleSheet">
+            <string notr="true">border: 1px solid black</string>
+           </property>
+          </widget>
+         </item>
+        </layout>
+       </widget>
+      </item>
+     </layout>
+    </widget>
+   </item>
+   <item>
+    <widget class="QWidget" name="widget_todo_group" native="true">
+     <layout class="QVBoxLayout" name="verticalLayout_5" stretch="1,10">
+      <item>
+       <widget class="QWidget" name="widget_3" native="true">
+        <layout class="QVBoxLayout" name="verticalLayout_6">
+         <item>
+          <widget class="QLabel" name="label_3">
+           <property name="text">
+            <string>添加群组邀请</string>
+           </property>
+          </widget>
+         </item>
+        </layout>
+       </widget>
+      </item>
+      <item>
+       <widget class="QWidget" name="widget_todo_group_list" native="true">
+        <property name="styleSheet">
+         <string notr="true">border: 1px solid black</string>
+        </property>
+       </widget>
+      </item>
+     </layout>
+    </widget>
+   </item>
+  </layout>
+ </widget>
+ <resources>
+  <include location="TinyChat.qrc"/>
+ </resources>
+ <connections/>
+</ui>

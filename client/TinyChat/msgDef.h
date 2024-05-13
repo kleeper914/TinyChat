@@ -61,7 +61,7 @@ typedef enum {
 //定义command命令类型
 enum
 {
-    command_login,
+    command_login = 0,
     command_logout,
     command_register,
     command_friendList,
@@ -70,7 +70,9 @@ enum
     command_groupChat,
     command_refreshFriendStatus,
     command_addFriend,
-    command_searchAccount
+    command_searchAccount,
+    command_refreshFriendList,
+    command_refreshGroupList
 };
 
 //与界面交互的数据结构
@@ -145,6 +147,19 @@ struct friendListReply
 {
     int m_account;
     int length;
+};
+
+//更新好友信息请求
+struct refreshFriendReq
+{
+    int account;
+};
+
+//更新还有信息请求的回复
+struct refreshFriendReply
+{
+    int account;
+    char name[30];
 };
 
 //获得群聊信息请求

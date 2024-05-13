@@ -25,6 +25,7 @@ SOURCES += \
     privatechatpage.cpp \
     registerdlg.cpp \
     task.cpp \
+    tododlg.cpp \
     userinfodlg.cpp \
     widget.cpp
 
@@ -41,6 +42,7 @@ HEADERS += \
     privatechatpage.h \
     registerdlg.h \
     task.h \
+    tododlg.h \
     userinfodlg.h \
     widget.h
 
@@ -48,6 +50,7 @@ FORMS += \
     addfrienddlg.ui \
     logindlg.ui \
     registerdlg.ui \
+    tododlg.ui \
     userinfodlg.ui \
     widget.ui
 

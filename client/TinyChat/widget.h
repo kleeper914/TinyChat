@@ -22,6 +22,7 @@
 #include "registerdlg.h"
 #include "userinfodlg.h"
 #include "addfrienddlg.h"
+#include "tododlg.h"
 
 QT_BEGIN_NAMESPACE
 namespace Ui {
@@ -67,6 +68,7 @@ public:
     int searchAccountHandle(void* message);
     int addFriendReqHandle(void* message);
     int addFriendReplyHandle(void* message);
+    int refreshFriendListHandle(void* message);
 
     bool eventFilter(QObject* target, QEvent* event) override;
     void messageAlert();
@@ -92,6 +94,8 @@ private slots:
     void send_searchAccount(int account);
     void send_addFriend(int account, char* message);
     void readyReadSlot();
+    void addFriend_agree(addFriendInfoReq*);
+    void addFriend_reject(addFriendInfoReq*);
     void on_privateChat_clicked();
     void on_groupChat_clicked();
     void on_sendData_clicked();
@@ -116,13 +120,20 @@ private:
     groupInfoMap m_groupInfoMap;                //存放所有群聊信息
     QMediaPlayer* player;
     QAudioOutput* output;
+    todoDlg*    tododlg;
 private:
     QWidget*            privateButtonWidget;
+    QVBoxLayout*        privateButtonWidgetLayout;
     privateChatButton** friendButtonList;           //存放好友按钮索引
     privateChatPage**   privateChatPageList;        //存放好友聊天页面索引
     QVBoxLayout**       privateChatLayoutList;      //存放好友聊天页面layout索引
     chatTextEdit**         privateChatTextEditList;    //存放好友编辑框索引
     chatTextBrowser**      privateChatTextBrowserList; //存放好友浏览框索引
+    std::vector<privateChatButton*> new_friend_button_list;
+    std::vector<privateChatPage*>   new_friend_page_list;
+    std::vector<QVBoxLayout*>       new_friend_chat_layout_list;
+    std::vector<chatTextEdit*>      new_friend_edit_list;
+    std::vector<chatTextBrowser*>   new_friend_browser_list;
 private:
     QWidget*            groupButtonWidget;
     QVBoxLayout* groupButtonWidgetLayout;

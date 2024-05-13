@@ -202,10 +202,10 @@ int Task::messageHandle(messagePacket* msgPacket)
             registerHandle(this, msgPacket->body + sizeof(messageBody));
             break;
         case command_friendList:
-            friendListHandle(this, msgPacket->body + sizeof(messageBody));
+            initFriendListHandle(this, msgPacket->body + sizeof(messageBody));
             break;
         case command_groupList:
-            groupListHandle(this, msgPacket->body + sizeof(messageBody));
+            initGroupListHandle(this, msgPacket->body + sizeof(messageBody));
             break;
         case command_privateChat:
             privateChatHandle(msgPacket->body + sizeof(messageBody));
@@ -228,6 +228,9 @@ int Task::messageHandle(messagePacket* msgPacket)
             break;
         case command_searchAccount:
             searchAccountHandle(msgPacket->body + sizeof(messageBody));
+            break;
+        case command_refreshFriendList:
+            refreshFriendListHandle(this, msgPacket->body + sizeof(messageBody));
             break;
     }
     delete msgPacket;
@@ -281,7 +284,26 @@ void Task::closeTask()
     else
     {
         userInfo* userToDel = ite->second;
+        //delete the userInfo from userInfoMap
+        pthread_mutex_lock(&_mutex);
         m_userInfoMap.erase(ite);
+        pthread_mutex_unlock(&_mutex);
+        //delete the addFriendInfo from addFriendInfoMap
+        addFriendInfoMap::iterator ite_addFriend = m_addFriendInfoMap.begin();
+        while(ite_addFriend != m_addFriendInfoMap.end())
+        {
+            if(ite_addFriend->second->senderAccount == m_account || ite_addFriend->second->receiverAccount == m_account)
+            {
+                LOGINFO("delete addFriendInfo from addFriendInfoMap: senderAccount:%d receiverAccount:%d\n", ite_addFriend->second->senderAccount, ite_addFriend->second->receiverAccount);
+                pthread_mutex_lock(&_mutex);
+                m_addFriendInfoMap.erase(ite_addFriend++);
+                pthread_mutex_unlock(&_mutex);
+            }
+            else
+            {
+                ite_addFriend++;
+            }
+        }
         if(userToDel != NULL)
         {
             free(userToDel);
@@ -350,7 +372,10 @@ int Task::loginHandle(void* arg, void* message)
                 user->m_socket = pthis->m_socket;
                 user->m_userAccount = loginInfo->m_account;
                 user->is_login = true;
+                //insert the userInfo to the userInfoMap
+                pthread_mutex_lock(&_mutex);
                 m_userInfoMap.insert(std::make_pair(user->m_userAccount, user));
+                pthread_mutex_unlock(&_mutex);
 
                 //send respond to client
                 loginInfoReply* loginReply;
@@ -439,7 +464,7 @@ int Task::registerHandle(void* arg, void* message)
     return 0;
 }
 
-int Task::friendListHandle(void* arg, void* message)
+int Task::initFriendListHandle(void* arg, void* message)
 {
     Task* pthis = (Task*)arg;
     friendListReq* friListReq = (friendListReq*)message;
@@ -620,7 +645,7 @@ int Task::friendListHandle(void* arg, void* message)
     return true;
 }
 
-int Task::groupListHandle(void* arg, void* message)
+int Task::initGroupListHandle(void* arg, void* message)
 {
     Task* pthis = (Task*)arg;
     getGroupListReq* groupReq = (getGroupListReq*)message;
@@ -640,6 +665,12 @@ int Task::groupListHandle(void* arg, void* message)
     sprintf(query, "select group_account, group_name, group_id from group_relation gr left join `group` g on gr.group_id = g.id where user_id = %d;", user_id);
     mydb.myDB_query(query);
     result = mydb.getResult();
+    if(mydb.getNumRow() == 0)
+    {
+        LOGINFO("this user has no group\n");
+        return -1;
+    }
+
     int num_group = mydb.getNumRow();
     string* group_name = new string[num_group];
     int* group_account = new int[num_group];
@@ -697,19 +728,19 @@ int Task::groupListHandle(void* arg, void* message)
     }
 
     //print all the message from groupInfoMap and groupMemInfoMap
-    LOGINFO("all the message from groupInfoMap and groupMemInfoMap follows:\n");
-    groupInfoMap::iterator ite_gMap = m_groupInfoMap.begin();
-    while(ite_gMap != m_groupInfoMap.end())
-    {
-        cout << "groupAccount: " << ite_gMap->first << " groupName: " << ite_gMap->second->name << " groupSize: " << ite_gMap->second->size << endl;
-        groupMemInfoMap::iterator ite_gmMap = ite_gMap->second->m_groupMemInfoMap.begin();
-        while(ite_gmMap != ite_gMap->second->m_groupMemInfoMap.end())
-        {
-            cout << "account: " << ite_gmMap->first << " name: " << ite_gmMap->second->name << " right: " << ite_gmMap->second->right << endl;
-            ite_gmMap++;
-        }
-        ite_gMap++;
-    }
+    // LOGINFO("all the message from groupInfoMap and groupMemInfoMap follows:\n");
+    // groupInfoMap::iterator ite_gMap = m_groupInfoMap.begin();
+    // while(ite_gMap != m_groupInfoMap.end())
+    // {
+    //     cout << "groupAccount: " << ite_gMap->first << " groupName: " << ite_gMap->second->name << " groupSize: " << ite_gMap->second->size << endl;
+    //     groupMemInfoMap::iterator ite_gmMap = ite_gMap->second->m_groupMemInfoMap.begin();
+    //     while(ite_gmMap != ite_gMap->second->m_groupMemInfoMap.end())
+    //     {
+    //         cout << "account: " << ite_gmMap->first << " name: " << ite_gmMap->second->name << " right: " << ite_gmMap->second->right << endl;
+    //         ite_gmMap++;
+    //     }
+    //     ite_gMap++;
+    // }
 
     if(group_name != NULL)
     {
@@ -831,7 +862,7 @@ int Task::addFriendReqHandle(void* arg, void* message)
     if(iter == m_userInfoMap.end())
     {
         LOGINFO("this account is not exist or not online\n");
-        sendMsg(m_socket, NULL, 0, command_addFriend, -1, 1);
+        sendMsg(m_socket, NULL, 0, command_addFriend, -1, 2);
         return -1;
     }
     else
@@ -848,7 +879,7 @@ int Task::addFriendReqHandle(void* arg, void* message)
     {
 
         LOGINFO("the two accounts are already friends\n");
-        sendMsg(m_socket, NULL, 0, command_addFriend, -1, 1);
+        sendMsg(m_socket, NULL, 0, command_addFriend, -1, 2);
         return -1;
     }
     //the two accounts are not friends
@@ -872,7 +903,10 @@ int Task::addFriendReqHandle(void* arg, void* message)
         addInfo->receiverAccount = addfriReq->receiverAccount;
         addInfo->is_agree = -1;
         int index = m_addFriendInfoMap.size();
+        //insert the addFriendInfo to the m_addFriendInfoMap
+        pthread_mutex_lock(&_mutex);
         m_addFriendInfoMap.insert(std::pair(index, addInfo));
+        pthread_mutex_unlock(&_mutex);
         LOGINFO("insert into a addFriendInfo: sender: %d, receiver: %d\n", addInfo->senderAccount, addInfo->receiverAccount);
 
         //send request to the receiver
@@ -891,7 +925,7 @@ int Task::addFriendReplyHandle(void* arg, void* message)
     LOGINFO("receive addFriendInfoReply: sender: %d, recriver: %d, status: %d\n", replyInfo->senderAccount, replyInfo->receiverAccount, replyInfo->is_agree);
 
     userInfo* uInfo = NULL;
-    userInfoMap::iterator ite_user = m_userInfoMap.find(replyInfo->senderAccount);
+    userInfoMap::iterator ite_user = m_userInfoMap.find(replyInfo->receiverAccount);
     if(ite_user != m_userInfoMap.end())
     {
         uInfo = ite_user->second;
@@ -915,22 +949,42 @@ int Task::addFriendReplyHandle(void* arg, void* message)
     {
         while(ite_addFriend != m_addFriendInfoMap.end())
         {
-            if(ite_addFriend->second->senderAccount == replyInfo->senderAccount && ite_addFriend->second->receiverAccount == replyInfo->receiverAccount)
+            if(ite_addFriend->second->senderAccount == replyInfo->receiverAccount && ite_addFriend->second->receiverAccount == replyInfo->senderAccount)
             {
                 if(replyInfo->is_agree == 0)
                 {
+                    //erase the addFriendInfo from the m_addFriendInfoMap
+                    LOGINFO("the receiver refuse the request, delete the addFriendInfo in m_addFriendInfoMap\n")
+                    pthread_mutex_lock(&_mutex);
                     m_addFriendInfoMap.erase(ite_addFriend->first);
+                    pthread_mutex_unlock(&_mutex);
                     sendMsg(ite_user->second->m_socket, (char*)replyInfo, sizeof(addFriendInfoReply), command_addFriend, 0, 2);
                     return 0;
                 }
                 else if(replyInfo->is_agree == 1)
                 {
+                    LOGINFO("the receiver agree the request, delete the addFriendInfo in m_addFriendInfoMap\n");
+                    pthread_mutex_lock(&_mutex);
                     m_addFriendInfoMap.erase(ite_addFriend->first);
+                    pthread_mutex_unlock(&_mutex);
 
+                    //insert the friendInfo to the m_friendInfoMap
                     myDB mydb;
                     mydb.myDB_init();
                     char query[500];
                     string** result = NULL;
+                    sprintf(query, "select username from user where account = %d", replyInfo->receiverAccount);
+                    mydb.myDB_query(query);
+                    result = mydb.getResult();
+
+                    friendInfo* friInfo = new friendInfo;
+                    friInfo->account = replyInfo->receiverAccount;
+                    memmove(friInfo->friend_name, result[0][0].c_str(), result[0][0].size());
+                    friInfo->status = true;
+                    LOGINFO("insert the friendInfo to the m_friendInfoMap: account: %d, name: %s\n", friInfo->account, friInfo->friend_name);
+                    m_friendInfoMap.insert(std::pair(friInfo->account, *friInfo));
+                    mydb.cleanResult();
+
                     //search the two user_id by the accounts
                     int sender_id = 0;
                     sprintf(query, "select id from user where account = %d", replyInfo->senderAccount);
@@ -958,6 +1012,7 @@ int Task::addFriendReplyHandle(void* arg, void* message)
             ite_addFriend++;
         }
 
+        LOGINFO("the addFriendInfo is not exist\n");
         sendMsg(m_socket, NULL, 0, command_addFriend, -1, 2);
         return -1;
     }
@@ -979,7 +1034,6 @@ int Task::searchAccountHandle(void* message)
     sprintf(query, "select username from user where account = %d", searchReq->account);
     mydb.myDB_query(query);
     string** result = mydb.getResult();
-    LOGINFO("result[0][0]: %s\n", result[0][0].c_str());
     if(result != NULL){
         memmove(searchReply->m_name, result[0][0].c_str(), result[0][0].size());
         LOGINFO("search account: %d, name: %s\n", searchReq->account, searchReply->m_name);
@@ -1022,6 +1076,85 @@ int Task::searchAccountHandle(void* message)
     {
         delete searchReply;
         searchReply = NULL;
+    }
+
+    return 0;
+}
+
+int Task::refreshFriendListHandle(void* arg, void* message)
+{
+    Task* pthis = (Task*)arg;
+    refreshFriendListReq* refreshFriReq = (refreshFriendListReq*)message;
+    LOGINFO("receive refreshFriendList request\n");
+    LOGINFO("account = %d\n", refreshFriReq->account);
+
+    //get the detailed information of the friend
+    myDB mydb;
+    mydb.myDB_init();
+    char query[500];
+    sprintf(query, "select id, username from user where account = %d", refreshFriReq->account);
+    mydb.myDB_query(query);
+    string** result = mydb.getResult();
+    int friend_id = atoi(result[0][0].c_str());
+    string friend_name = result[0][1];
+    mydb.cleanResult();
+
+    //get the user id
+    sprintf(query, "select id, username from user where account = %d", m_account);
+    mydb.myDB_query(query);
+    result = mydb.getResult();
+    int user_id = atoi(result[0][0].c_str());
+    string user_name = result[0][1];
+    mydb.cleanResult();
+
+    //check if the friend is in the friend_relation
+    sprintf(query, "select * from friend_relation where user_id1 = %d and user_id2 = %d", user_id, friend_id);
+    mydb.myDB_query(query);
+    result = mydb.getResult();
+    if(result == NULL)
+    {
+        mydb.cleanResult();
+        sprintf(query, "select * from friend_relation where user_id1 = %d and user_id2 = %d", friend_id, user_id);
+        mydb.myDB_query(query);
+        result = mydb.getResult();
+        if(result == NULL)
+        {
+            //the friend is not in the friend_relation
+            LOGINFO("the friend is not in the friend_relation\n");
+            sendMsg(pthis->m_socket, NULL, 0, command_refreshFriendList, -1, 2);
+            return -1;
+        }
+        else
+        {
+            //the friend is in the friend_relation
+            LOGINFO("the friend is in the friend_relation\n");
+            mydb.cleanResult();
+            //send message to the client
+            refreshFriendListReply* refreshFriReply = new refreshFriendListReply;
+            refreshFriReply->account = refreshFriReq->account;
+            memcpy(refreshFriReply->name, friend_name.c_str(), friend_name.size());
+            sendMsg(pthis->m_socket, (char*)refreshFriReply, sizeof(refreshFriendListReply), command_refreshFriendList, 0, 2);
+            if(refreshFriReply != NULL)
+            {
+                delete refreshFriReply;
+                refreshFriReply = NULL;
+            }
+        }
+    }
+    else
+    {
+        //the friend is in the friend_relation
+        LOGINFO("the friend is in the friend_relation\n");
+        //send message to the client
+        refreshFriendListReply* refreshFriReply_2 = new refreshFriendListReply;
+        refreshFriReply_2->account = refreshFriReq->account;
+        memcpy(refreshFriReply_2->name, friend_name.c_str(), friend_name.size());
+        sendMsg(pthis->m_socket, (char*)refreshFriReply_2, sizeof(refreshFriendListReply), command_refreshFriendList, 0, 2);
+        if(refreshFriReply_2 != NULL)
+        {
+            delete refreshFriReply_2;
+            refreshFriReply_2 = NULL;
+        }
     }
 
     return 0;

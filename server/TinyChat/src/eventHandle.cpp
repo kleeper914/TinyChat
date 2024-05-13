@@ -16,6 +16,7 @@ void* event_handle(void* arg)
         if(task.readEvent() == READ_EXIT)
         {
             close(clnt_sock);
+            LOGINFO("client %d exit\n", clnt_sock);
             return NULL;
         }
     }

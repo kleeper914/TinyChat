@@ -228,6 +228,19 @@ struct addFriendInfoReply
     int is_agree;       //1-agree   0-not agree
 };
 
+//refresh friend list request
+struct refreshFriendListReq
+{
+    int account;
+};
+
+//refresh friend list reply
+struct refreshFriendListReply
+{
+    int account;
+    char name[30];
+};
+
 //search account request
 struct searchAccountReq
 {
@@ -265,7 +278,7 @@ typedef enum{
 
 enum
 {
-    command_login,
+    command_login = 0,
     command_logout,
     command_register,
     command_friendList,
@@ -274,7 +287,9 @@ enum
     command_groupChat,
     command_refreshFriendStatus,
     command_addFriend,
-    command_searchAccount
+    command_searchAccount,
+    command_refreshFriendList,
+    command_refreshGroupList
 };
 
 /*
@@ -305,8 +320,10 @@ public:
     int loginHandle(void* arg, void* message);
     int logoutHandle(void* arg, void* message);
     int registerHandle(void* arg, void* message);
-    int friendListHandle(void* arg, void* message);
-    int groupListHandle(void* arg, void* message);
+    int initFriendListHandle(void* arg, void* message);
+    int refreshFriendListHandle(void* arg, void* message);
+    int initGroupListHandle(void* arg, void* message);
+    int refreshGroupListHandle(void* arg, void* message);
     int privateChatHandle(void* message);
     int groupChatHandle(void* message);
     int refreshFriendStatusHandle(void* arg, void* message);
