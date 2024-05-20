@@ -14,7 +14,7 @@
 #include <QTcpSocket>
 #include <QDateTime>
 
-#define SERVER_IP	"02f41a6ab1466626.natapp.cc"
+#define SERVER_IP	"114.116.255.15"
 #define SERVER_PORT	 9190
 
 #define LOGINFO() qDebug().noquote()<<QDateTime::currentDateTime().toString("yyyy-MM-dd hh:mm:ss zzz")\

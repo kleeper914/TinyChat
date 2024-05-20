@@ -71,7 +71,7 @@ bool myDB::myDB_query(char* query)
             num_row = num_rows;
             num_field = num_fields;
             if(num_rows) result = new string*[num_rows];
-            else result == NULL;
+            else result = NULL;
 
             for(int i = 0; i < num_rows; i++)
             {

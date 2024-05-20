@@ -17,6 +17,8 @@ SOURCES += \
     basic.cpp \
     chattextbrowser.cpp \
     chattextedit.cpp \
+    creategroupdlg.cpp \
+    friendcheckbox.cpp \
     groupchatbutton.cpp \
     groupchatpage.cpp \
     logindlg.cpp \
@@ -34,6 +36,8 @@ HEADERS += \
     basic.h \
     chattextbrowser.h \
     chattextedit.h \
+    creategroupdlg.h \
+    friendcheckbox.h \
     groupchatbutton.h \
     groupchatpage.h \
     logindlg.h \
@@ -48,6 +52,7 @@ HEADERS += \
 
 FORMS += \
     addfrienddlg.ui \
+    creategroupdlg.ui \
     logindlg.ui \
     registerdlg.ui \
     tododlg.ui \

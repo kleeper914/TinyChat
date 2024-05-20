@@ -256,6 +256,31 @@ struct searchAccountReply
     bool is_online;
 };
 
+//create group request
+struct createGroupReq
+{
+    int master_account;
+    char group_name[30];
+    int size;
+};
+
+//create group reply
+struct createGroupReply
+{
+    int group_account;
+    char group_name[30];
+    int size;
+    int master_account;
+};
+
+//add Group request
+struct addGroupReq
+{
+    int group_account;
+    char group_name[30];
+    int sender_account;
+};
+
 /*
 *   define the return value of the Task::readEvent()
 */
@@ -289,7 +314,9 @@ enum
     command_addFriend,
     command_searchAccount,
     command_refreshFriendList,
-    command_refreshGroupList
+    command_refreshGroupList,
+    command_createGroup,
+    command_addGroup
 };
 
 /*
@@ -330,6 +357,7 @@ public:
     int addFriendReqHandle(void* arg, void* message);
     int addFriendReplyHandle(void* arg, void* message);
     int searchAccountHandle(void* message);
+    int createGroupHandle(void* message);
 public:
     static void sendMsg(int socket, void* buf, int bufLen, int command, int error = 0, int type = 2);
 private:

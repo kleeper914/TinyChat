@@ -13,7 +13,6 @@
 #include <pthread.h>
 #include <mutex>
 #include <map>
-#include <json/json.h>
 using namespace std;
 
 #define IS_NULL(x) ((x)?(x):"")

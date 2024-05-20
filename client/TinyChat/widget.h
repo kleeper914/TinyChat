@@ -22,7 +22,9 @@
 #include "registerdlg.h"
 #include "userinfodlg.h"
 #include "addfrienddlg.h"
+#include "creategroupdlg.h"
 #include "tododlg.h"
+#include <QAction>
 
 QT_BEGIN_NAMESPACE
 namespace Ui {
@@ -55,6 +57,8 @@ public slots:
     void searchGroupBrowser(int);
 
 public:
+    int getFriendList();
+    int getGroupList();
     int loginHandle(void* message);
     int logoutHandle(void* msg);
     int registerHandle(void* message);
@@ -62,13 +66,12 @@ public:
     int groupListHandle(void* message);
     int privateChatHandle(void* message);
     int groupChatHandle(void* message);
-    int getFriendList();
-    int getGroupList();
     int refreshFriendStatusHandle(void* message);
     int searchAccountHandle(void* message);
     int addFriendReqHandle(void* message);
     int addFriendReplyHandle(void* message);
     int refreshFriendListHandle(void* message);
+    int createGroupHandle(void* message);
 
     bool eventFilter(QObject* target, QEvent* event) override;
     void messageAlert();
@@ -92,6 +95,7 @@ private:
 private slots:
     int signals_handle(messagePacket*);
     void send_searchAccount(int account);
+    void send_createGroup(groupInfo*);
     void send_addFriend(int account, char* message);
     void readyReadSlot();
     void addFriend_agree(addFriendInfoReq*);
@@ -100,8 +104,9 @@ private slots:
     void on_groupChat_clicked();
     void on_sendData_clicked();
     void on_userInfo_button_clicked();
-    void on_pushButton_add_clicked();
+    //void on_pushButton_add_clicked();
     void on_pushButton_TODO_clicked();
+    void add_action_triggered(QAction*);
 
 private:
     Ui::Widget *ui;
@@ -121,6 +126,8 @@ private:
     QMediaPlayer* player;
     QAudioOutput* output;
     todoDlg*    tododlg;
+    QAction*    action_addFriend;
+    QAction*    action_createGroup;
 private:
     QWidget*            privateButtonWidget;
     QVBoxLayout*        privateButtonWidgetLayout;

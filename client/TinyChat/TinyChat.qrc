@@ -7,6 +7,7 @@
         <file>images/file.ico</file>
         <file>images/add.ico</file>
         <file>images/TODO.ico</file>
+        <file>images/a-background-image-of-the-login-interface-of-a-cha.png</file>
     </qresource>
     <qresource prefix="/source">
         <file>source/QQ.wav</file>

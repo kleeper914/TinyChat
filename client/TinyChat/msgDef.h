@@ -72,7 +72,9 @@ enum
     command_addFriend,
     command_searchAccount,
     command_refreshFriendList,
-    command_refreshGroupList
+    command_refreshGroupList,
+    command_createGroup,
+    command_addGroup
 };
 
 //与界面交互的数据结构
@@ -241,6 +243,31 @@ struct searchAccountReply
     char name[30];
     bool is_friend;
     bool is_online;
+};
+
+//创建群聊请求
+struct createGroupReq
+{
+    int master_account;
+    char group_name[30];
+    int size;
+};
+
+//创建群聊请求的回复
+struct createGroupReply
+{
+    int group_account;
+    char group_name[30];
+    int size;
+    int master_account;
+};
+
+//添加群组请求
+struct addGroupReq
+{
+    int group_account;
+    char group_name[30];
+    int sender_account;
 };
 
 //定义用户好友表

@@ -7,6 +7,8 @@
 #include <QPushButton>
 #include <QNetworkProxy>
 #include <QUrl>
+#include <QMenu>
+#include <QAction>
 
 Widget::Widget(QWidget *parent)
     : QWidget(parent)
@@ -37,11 +39,93 @@ void Widget::initUI()
 
     initGroupChat();
 
+    QMenu* menu_add = new QMenu(this);
+    action_addFriend = new QAction("添加好友", this);
+    action_createGroup = new QAction("创建群聊", this);
+    menu_add->addAction(action_addFriend);
+    menu_add->addAction(action_createGroup);
+    menu_add->setWindowFlags(menu_add->windowFlags() | Qt::FramelessWindowHint);
+    menu_add->setAttribute(Qt::WA_TranslucentBackground);
+    menu_add->setStyleSheet("QMenu {border-radius:5px; font-family:'Microsoft Yahei'; font-size:14px; color:#000;}"
+                            "QMenu::item {height:30px; width:100px padding-left:20px; border:1px solid none;}"
+                            "QMenu::item:selected {background-color:rgb(0, 120, 215); \
+                            padding-left:20px; border:1px solid rgb(65, 173, 255);}");
+    ui->pushButton_add->setMenu(menu_add);
+    connect(menu_add, &QMenu::triggered, this, &Widget::add_action_triggered);
+
     tododlg = new todoDlg;
     connect(tododlg, SIGNAL(emit_addFriend_agree(addFriendInfoReq*)), this, SLOT(addFriend_agree(addFriendInfoReq*)));
     connect(tododlg, SIGNAL(emit_addFriend_reject(addFriendInfoReq*)), this, SLOT(addFriend_reject(addFriendInfoReq*)));
 
     connect(this, SIGNAL(friendList_finish()), this, SLOT(init_privateChat()));
+}
+
+void Widget::add_action_triggered(QAction* action)
+{
+    if(action == action_addFriend)
+    {
+        addFriendDlg* addFriDlg = new addFriendDlg();
+        connect(addFriDlg, SIGNAL(emit_searchButtonClicked(int)), this, SLOT(send_searchAccount(int)));
+        connect(this, SIGNAL(emit_searchAccountFinish(searchAccountReply*)), addFriDlg, SLOT(displaySearchAccount(searchAccountReply*)));
+        connect(addFriDlg, SIGNAL(emit_addButtonClicked(int,char*)), this, SLOT(send_addFriend(int,char*)));
+        //addFriDlg->setParent(this);
+        addFriDlg->show();
+    }
+    else if(action == action_createGroup)
+    {
+        createGroupDlg* createGrpDlg = new createGroupDlg;
+        connect(createGrpDlg, SIGNAL(emit_group_mem_info(groupInfo*)), this, SLOT(send_createGroup(groupInfo*)));
+        createGrpDlg->init_friend_info(&m_friendInfoMap);
+        createGrpDlg->show();
+    }
+}
+
+void Widget::send_createGroup(groupInfo* create_group)
+{
+    char* p = (char*)malloc(sizeof(createGroupReq) + sizeof(groupMemInfo) * create_group->size);
+    createGroupReq* createGrpReq = (createGroupReq*)p;
+    createGrpReq->master_account = m_uInfo.m_account;
+    memcpy(createGrpReq->group_name, create_group->name, sizeof(create_group->name));
+    createGrpReq->size = create_group->size;
+    LOGINFO() << "master_account: " << createGrpReq->master_account << " name: " << createGrpReq->group_name << " size: " << createGrpReq->size;
+    //传递的create_group中存有除用户外其余的群聊成员
+    //将用户本身信息存入第一个群聊成员中
+    groupMemInfo* groupMem = new groupMemInfo;
+    groupMem->account = m_uInfo.m_account;
+    memcpy(groupMem->name, m_uInfo.m_userName, sizeof(m_uInfo.m_userName));
+    groupMem->right = 0;
+    memmove(p + sizeof(createGroupReq), (char*)groupMem, sizeof(groupMemInfo));
+    for(int i = 0; i < create_group->size - 1; i++)
+    {
+        groupMemInfo* group_mem = new groupMemInfo;
+        group_mem->account = create_group->groupMemInfoList[i]->account;
+        memcpy(group_mem->name, create_group->groupMemInfoList[i]->name, sizeof(create_group->groupMemInfoList[i]->name));
+        group_mem->right = create_group->groupMemInfoList[i]->right;
+        memmove(p+sizeof(createGroupReq)+sizeof(groupMemInfo)*(i+1), group_mem, sizeof(groupMemInfo));
+        //LOGINFO() << "member" << i+1 << " account: " << group_mem->account << " name: " << group_mem->name << " right: " << group_mem->right;
+        if(group_mem != NULL)
+        {
+            delete group_mem; group_mem = NULL;
+        }
+    }
+
+    sendMsg(p, sizeof(createGroupReq) + sizeof(groupMemInfo) * create_group->size, command_createGroup);
+    LOGINFO() << "发送创建群聊请求成功...";
+
+    if(create_group != NULL)
+    {
+        delete create_group;
+        create_group = NULL;
+    }
+    if(p != NULL)
+    {
+        free(p); p = NULL;
+    }
+    if(p != NULL)
+    {
+        free(p);
+        p = NULL;
+    }
 }
 
 void Widget::init_privateChat()
@@ -243,6 +327,32 @@ void Widget::init()
     connect(this, SIGNAL(emit_groupAccount(int)), this, SLOT(searchGroupBrowser(int)));
 }
 
+int Widget::getFriendList()
+{
+    //发送获得好友表请求
+    friendListReq friReq;
+    memset(&friReq, 0, sizeof(friendListReq));
+    friReq.m_account = m_uInfo.m_account;
+    sendMsg((char*)&friReq, sizeof(friendListReq), command_friendList);
+
+    return true;
+}
+
+int Widget::getGroupList()
+{
+    //发送获得群聊好友表请求
+    getGroupListReq* groupReq = (getGroupListReq*)malloc(sizeof(getGroupListReq));
+    groupReq->m_account = m_uInfo.m_account;
+    sendMsg((char*)groupReq, sizeof(getGroupListReq), command_groupList);
+    if(groupReq != NULL)
+    {
+        free(groupReq);
+        groupReq = NULL;
+    }
+
+    return true;
+}
+
 void Widget::readyReadSlot()
 {
     if(m_task->readEvent() != READ_EXIT)
@@ -311,32 +421,6 @@ void Widget::closeEvent(QCloseEvent* event)
         refreshStatusReq = NULL;
     }
     qDebug("close");
-}
-
-int Widget::getFriendList()
-{
-    //发送获得好友表请求
-    friendListReq friReq;
-    memset(&friReq, 0, sizeof(friendListReq));
-    friReq.m_account = m_uInfo.m_account;
-    sendMsg((char*)&friReq, sizeof(friendListReq), command_friendList);
-
-    return true;
-}
-
-int Widget::getGroupList()
-{
-    //发送获得群聊好友表请求
-    getGroupListReq* groupReq = (getGroupListReq*)malloc(sizeof(getGroupListReq));
-    groupReq->m_account = m_uInfo.m_account;
-    sendMsg((char*)groupReq, sizeof(getGroupListReq), command_groupList);
-    if(groupReq != NULL)
-    {
-        free(groupReq);
-        groupReq = NULL;
-    }
-
-    return true;
 }
 
 void Widget::login()
@@ -486,6 +570,9 @@ int Widget::signals_handle(messagePacket* msgPacket)
         break;
     case command_refreshFriendList:
         refreshFriendListHandle(msgPacket->body + sizeof(messageBody));
+        break;
+    case command_createGroup:
+        createGroupHandle(msgPacket->body + sizeof(messageBody));
         break;
     }
     return 0;
@@ -781,6 +868,21 @@ int Widget::refreshFriendListHandle(void* message)
     return true;
 }
 
+int Widget::createGroupHandle(void* message)
+{
+    createGroupReply* createGrpReply = (createGroupReply*)message;
+    LOGINFO() << "收到创建群聊的回复...";
+    LOGINFO() << "group_account: " << createGrpReply->group_account << " group_name: " << createGrpReply->group_name << " group_size: " << createGrpReply->size << " master_account: " << createGrpReply->master_account;
+
+    //向m_groupInfoMap插入群聊信息
+    groupInfo* new_group = new groupInfo;
+    new_group->account = createGrpReply->group_account;
+    memcpy(new_group->name, createGrpReply->group_name, sizeof(createGrpReply->group_name));
+    new_group->size = createGrpReply->size;
+
+    return 0;
+}
+
 void Widget::displayUserMessage(chatTextBrowser* textBrowser, QString* message)
 {
     QDateTime dateTime = QDateTime::currentDateTime();
@@ -1001,17 +1103,6 @@ void Widget::on_userInfo_button_clicked()
     userInfoDlg uInfoDlg(&m_uInfo);
     uInfoDlg.show();
     uInfoDlg.exec();
-}
-
-
-void Widget::on_pushButton_add_clicked()
-{
-    addFriendDlg* addFriDlg = new addFriendDlg();
-    connect(addFriDlg, SIGNAL(emit_searchButtonClicked(int)), this, SLOT(send_searchAccount(int)));
-    connect(this, SIGNAL(emit_searchAccountFinish(searchAccountReply*)), addFriDlg, SLOT(displaySearchAccount(searchAccountReply*)));
-    connect(addFriDlg, SIGNAL(emit_addButtonClicked(int,char*)), this, SLOT(send_addFriend(int,char*)));
-    //addFriDlg->setParent(this);
-    addFriDlg->show();
 }
 
 void Widget::send_searchAccount(int account)

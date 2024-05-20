@@ -232,6 +232,9 @@ int Task::messageHandle(messagePacket* msgPacket)
         case command_refreshFriendList:
             refreshFriendListHandle(this, msgPacket->body + sizeof(messageBody));
             break;
+        case command_createGroup:
+            createGroupHandle(msgPacket->body + sizeof(messageBody));
+            break;
     }
     delete msgPacket;
     return 0;
@@ -434,7 +437,7 @@ int Task::registerHandle(void* arg, void* message)
         result = mydb.getResult();
         if(result == NULL)
         {
-            is_success = true;
+            break;
         }
         else
         {
@@ -445,6 +448,7 @@ int Task::registerHandle(void* arg, void* message)
         mydb.cleanResult();
     }
 
+    LOGINFO("create new user account: %d\n", account);
     //insert data to the mysql
     sprintf(query, "insert into user(username, account, password) VALUES (\'%s\', %d, \'%s\')", regReq->m_name, account, regReq->m_password);
     if(mydb.myDB_exe(query))
@@ -541,35 +545,6 @@ int Task::initFriendListHandle(void* arg, void* message)
         mydb.cleanResult();
     }
 
-    /*
-    for(const auto& entry : m_friendInfoMap)
-    {
-        Json::Value friInfoJson;
-        friInfoJson["username"] = entry.second.friend_name;
-        friInfoJson["account"] = entry.second.account;
-        jsonFriendInfo.append(friInfoJson);
-    }
-    Json::StreamWriterBuilder builder;
-    std::string jsonData = Json::writeString(builder, jsonFriendInfo);
-    cout << "data of jsonFriendInfo : \n" << jsonData << endl;
-    
-
-    //send friend info to the client
-    char* sendData = (char*)malloc(sizeof(friendListReply) + jsonData.length());
-    friendListReply* friReply = (friendListReply*) sendData;
-    friReply->m_account = m_account;
-    friReply->length = jsonData.length();
-    memmove(sendData + sizeof(friendListReply), jsonData.c_str(), jsonData.length());
-    sendMsg(m_socket, sendData, sizeof(friendListReply) + jsonData.length(), command_friendList, 0, 1);
-    LOGINFO("size of jsonData : %ld\n", jsonData.length());
-    //cout << "friendList string data: \n" << sendData << endl;
-    if(sendData != NULL)
-    {
-        free(sendData);
-        sendData = NULL;
-    }
-    */
-
     //judge the friends' status
     friendInfoMap::iterator ite_friend = m_friendInfoMap.begin();
     while(ite_friend != m_friendInfoMap.end())
@@ -586,27 +561,6 @@ int Task::initFriendListHandle(void* arg, void* message)
         }
         ite_friend++;
     }
-
-    //TODO
-    //send user online message to all friends and update online status
-    /*friendInfoMap::iterator ite = m_friendInfoMap.begin();
-    while(ite != m_friendInfoMap.end())
-    {
-        if(ite->second.status == true)
-        {
-            userInfoMap::iterator ite_user = m_userInfoMap.find(ite->second.account);
-            friendOnlineNotify* onlineInfo = (friendOnlineNotify*)malloc(sizeof(friendOnlineNotify));
-            onlineInfo->m_account = ite->second.account;
-            onlineInfo->status = true;
-            sendMsg(ite_user->second->m_socket, (char*)onlineInfo, sizeof(friendOnlineNotify), command_login, 0);
-            if(onlineInfo != NULL)
-            {
-                free(onlineInfo);
-                onlineInfo = NULL;
-            }
-        }
-        ite++;
-    }*/
 
     LOGINFO("the number of m_account's friends : %lu\n", m_friendInfoMap.size());
     int length = sizeof(friendListReply) + sizeof(friendInfo) * m_friendInfoMap.size();
@@ -727,21 +681,6 @@ int Task::initGroupListHandle(void* arg, void* message)
         mydb.cleanResult();
     }
 
-    //print all the message from groupInfoMap and groupMemInfoMap
-    // LOGINFO("all the message from groupInfoMap and groupMemInfoMap follows:\n");
-    // groupInfoMap::iterator ite_gMap = m_groupInfoMap.begin();
-    // while(ite_gMap != m_groupInfoMap.end())
-    // {
-    //     cout << "groupAccount: " << ite_gMap->first << " groupName: " << ite_gMap->second->name << " groupSize: " << ite_gMap->second->size << endl;
-    //     groupMemInfoMap::iterator ite_gmMap = ite_gMap->second->m_groupMemInfoMap.begin();
-    //     while(ite_gmMap != ite_gMap->second->m_groupMemInfoMap.end())
-    //     {
-    //         cout << "account: " << ite_gmMap->first << " name: " << ite_gmMap->second->name << " right: " << ite_gmMap->second->right << endl;
-    //         ite_gmMap++;
-    //     }
-    //     ite_gMap++;
-    // }
-
     if(group_name != NULL)
     {
         delete[] group_name;
@@ -800,26 +739,95 @@ int Task::groupChatHandle(void* message)
 
     //send message to all the online group member
     groupInfoMap::iterator ite_gMap = m_groupInfoMap.find(gChatReq->m_groupAccount);
-    groupMemInfoMap::iterator ite_gmMap = ite_gMap->second->m_groupMemInfoMap.begin();
-
-    while(ite_gmMap != ite_gMap->second->m_groupMemInfoMap.end())
+    //if the m_groupInfoMap has the group account
+    if(ite_gMap != m_groupInfoMap.end())
     {
-        userInfoMap::iterator ite_uMap = m_userInfoMap.find(ite_gmMap->first);
-        //do not send to the sender
-        if(ite_uMap != m_userInfoMap.end() && ite_uMap->first != m_account)
+
+        groupMemInfoMap::iterator ite_gmMap = ite_gMap->second->m_groupMemInfoMap.begin();
+
+        while(ite_gmMap != ite_gMap->second->m_groupMemInfoMap.end())
         {
-            sendMsg(ite_uMap->second->m_socket, message, sizeof(groupChatReq)+gChatReq->m_msgLen, command_groupChat);
+            userInfoMap::iterator ite_uMap = m_userInfoMap.find(ite_gmMap->first);
+            //do not send to the sender
+            if(ite_uMap != m_userInfoMap.end() && ite_uMap->first != m_account)
+            {
+                sendMsg(ite_uMap->second->m_socket, message, sizeof(groupChatReq)+gChatReq->m_msgLen, command_groupChat);
+            }
+            ite_gmMap++;
         }
-        ite_gmMap++;
-    }
 
-    if(buf != NULL)
+        if(buf != NULL)
+        {
+            free(buf);
+            buf = NULL;
+        }
+
+        return 0;
+    }
+    //if the m_groupAccount does not have this groupAccount
+    //then search the database
+    else
     {
-        free(buf);
-        buf = NULL;
-    }
+        LOGINFO("The group this message belongs to is not in m_groupInfoMap\n");
+        LOGINFO("search the database if the user in this group\n");
+        myDB mydb;
+        mydb.myDB_init();
+        char query[500];
+        sprintf(query, "select * from group where group_account = %d", gChatReq->m_groupAccount);
+        mydb.myDB_query(query);
+        string** result = mydb.getResult();
+        if(result != NULL)
+        {
+            LOGINFO("the user is in this group, update m_groupInfoMap\n");
+            //insert the new group to the m_groupInfoMap
+            groupStoreInfo* new_group = new groupStoreInfo;
+            new_group->account = atoi(result[0][1].c_str());
+            memcpy(new_group->name, result[0][2].c_str(), result[0][2].size());
+            int group_id = atoi(result[0][0].c_str());
+            mydb.cleanResult();
+            sprintf(query, "select count(*) from group_relation where group_id = %d;", group_id);
+            mydb.myDB_query(query);
+            result = mydb.getResult();
+            new_group->size = atoi(result[0][0].c_str());
+            mydb.cleanResult();
+            //search and insert the group member info
+            sprintf(query, "select account, username from group_relation left join user u on u.id = group_relation.user_id where group_id = %d;", group_id);
+            mydb.myDB_query(query);
+            result = mydb.getResult();
+            int group_mem_num = mydb.getNumRow();
+            for(int i = 0; i < group_mem_num; i++)
+            {
+                groupMemInfo* new_group_mem = new groupMemInfo;
+                new_group_mem->account = atoi(result[i][0].c_str());
+                memcpy(new_group_mem->name, result[i][1].c_str(), result[i][1].size());
+                new_group_mem->right = 0;
+                printf("member %d : account: %d, name: %s, right: %d\n", i+1, new_group_mem->account, new_group_mem->name, new_group_mem->right);
+                new_group->m_groupMemInfoMap.insert(std::pair(new_group_mem->account, new_group_mem));
+                userInfoMap::iterator ite_user = m_userInfoMap.find(new_group_mem->account);
+                if(ite_user != m_userInfoMap.end())
+                {
+                    sendMsg(ite_user->second->m_socket, message, sizeof(groupChatReq)+gChatReq->m_msgLen, command_groupChat);
+                }
+            }
+            if(buf != NULL)
+            {
+                free(buf);
+                buf = NULL;
+            }
+        }
+        else
+        {
+            LOGINFO("the user(%d) is not in the group(%d)", m_account, gChatReq->m_groupAccount);
+            if(buf != NULL)
+            {
+                free(buf);
+                buf = NULL;
+            }
+            return -1;
+        }
 
-    return 0;
+        return 0;
+    }
 }
 
 int Task::refreshFriendStatusHandle(void* arg, void* message)
@@ -1154,6 +1162,98 @@ int Task::refreshFriendListHandle(void* arg, void* message)
         {
             delete refreshFriReply_2;
             refreshFriReply_2 = NULL;
+        }
+    }
+
+    return 0;
+}
+
+int Task::createGroupHandle(void* message)
+{
+    createGroupReq* createGrpReq = (createGroupReq*)message;
+    LOGINFO("receive create group request...\n");
+    LOGINFO("master_account: %d, group_name: %s, size: %d\n", createGrpReq->master_account, createGrpReq->group_name, createGrpReq->size);
+    groupStoreInfo* new_group = new groupStoreInfo;
+    
+    //create new group account
+    myDB mydb;
+    mydb.myDB_init();
+    char query[500];
+    string** result;
+    int group_account = getGroupAccount();
+    LOGINFO("create group account = %d\n", group_account);
+    bool is_success = false;
+    while(is_success == false)
+    {
+        sprintf(query, "select * from `group` where group_account = %d", group_account);
+        mydb.myDB_query(query);
+        result = mydb.getResult();
+        if(result == NULL)
+        {
+            break;
+        }
+        else
+        {
+            is_success = false;
+            group_account = getGroupAccount();
+        }
+        mydb.cleanResult();
+    }
+    LOGINFO("create new group account: %d\n", group_account);
+    new_group->account = group_account;
+    new_group->size = createGrpReq->size;
+    memcpy(new_group->name, createGrpReq->group_name, sizeof(createGrpReq->group_name));
+
+    //insert the group info into the m_groupInfoMap and mysql
+    m_groupInfoMap.insert(std::pair(new_group->account, new_group));
+    //get the master_id by master_account   
+    sprintf(query, "select id from user where account = %d", createGrpReq->master_account);
+    mydb.myDB_query(query);
+    result = mydb.getResult();
+    int master_id = atoi(result[0][0].c_str());
+    mydb.cleanResult();
+    //insert the group info into the mysql
+    sprintf(query, "insert into `group`(group_account, group_name, master_id) VALUES (%d, %s, %d)", group_account, createGrpReq->group_name, master_id);
+    mydb.myDB_exe(query);
+    //get the group_id by group_account
+    sprintf(query, "select id from `group` where group_account = %d", group_account);
+    mydb.myDB_query(query);
+    result = mydb.getResult();
+    int group_id = atoi(result[0][0].c_str());
+    mydb.cleanResult();
+    //insert the group_relation into the mysql, just the user
+    sprintf(query, "insert into group_relation(user_id, group_id) VALUES (%d, %d)", master_id, group_id);
+    mydb.myDB_exe(query);
+    //send the createGroupReply to the client
+    createGroupReply* createGrpReply = new createGroupReply;
+    createGrpReply->group_account = group_account;
+    memcpy(createGrpReply->group_name, createGrpReq->group_name, sizeof(createGrpReq->group_name));
+    createGrpReply->master_account = createGrpReq->master_account;
+    createGrpReply->size = createGrpReq->size;
+    sendMsg(m_socket, (char*)createGrpReply, sizeof(createGroupReply), command_createGroup, 0, 2);
+    if(createGrpReply != NULL)
+    {
+        delete createGrpReply;
+        createGrpReply = NULL;
+    }
+
+    LOGINFO("group member infos: \n");
+    for(int i = 0; i < createGrpReq->size; i++)
+    {
+        groupMemInfo* temp_p = (groupMemInfo*)((char*)message + sizeof(createGroupReq) + sizeof(groupMemInfo) * i);
+        groupMemInfo* new_group_mem = new groupMemInfo;
+        memmove(new_group_mem, temp_p, sizeof(groupMemInfo));
+        cout << "account: " << new_group_mem->account << " name: " << new_group_mem->name << " right: " << new_group_mem->right << endl;
+        new_group->m_groupMemInfoMap.insert(std::pair(new_group_mem->account, new_group_mem));
+        //send add group request to the group member
+        userInfoMap::iterator ite_user = m_userInfoMap.find(new_group_mem->account);
+        if(ite_user != m_userInfoMap.end())
+        {
+            addGroupReq* addGrpReq = new addGroupReq;
+            addGrpReq->group_account = group_account;
+            addGrpReq->sender_account = createGrpReq->master_account;
+            memcpy(addGrpReq->group_name, createGrpReq->group_name, sizeof(createGrpReq->group_name));
+            sendMsg(ite_user->second->m_socket, (char*)addGrpReq, sizeof(addGroupReq), command_addGroup, 0, 1);
         }
     }
 
